@@ -29,10 +29,21 @@ endif()
 
 
 # --- ビルド設定 ---
+include(CTest)
+include(FetchContent)
+
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+## RPATH抹消
+# RPATH を一切使わないようにする
+set(CMAKE_SKIP_BUILD_RPATH TRUE)
+set(CMAKE_SKIP_INSTALL_RPATH TRUE)
+set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
+set(CMAKE_INSTALL_RPATH "")
+
 
 option(BUILD_STATIC_LIB "build static_lib" ON)
 option(BUILD_SHARED_LIB "build shared_lib" ON)
@@ -43,7 +54,7 @@ set(RELEASE_OPTIMIZE -O2 CACHE STRING "The compiler option for optimization, e.g
 
 # --- find_package(dev用のものはdev.cmake内で) ---
 # find_package(foo REQUIRED)
-
+find_package(Eigen3 REQUIRED)
 
 # --- 依存を指定 ---
 ## libとbinの依存が共通 -> binはあくまでlibに従うもの、libの使わないものを使いたいならプロジェクトを分けるべき
@@ -61,11 +72,20 @@ add_library(${PROJECT_NAME}_dep_export INTERFACE EXCLUDE_FROM_ALL)
 target_link_libraries(${PROJECT_NAME}_dep_export
 	INTERFACE
 		# add exported dependencies (s.t. any header depends)
+		Eigen3::Eigen
 )
 target_include_directories(${PROJECT_NAME}_dep_export
 	INTERFACE
 		$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 		$<INSTALL_INTERFACE:include>
+)
+target_compile_options(${PROJECT_NAME}_dep_export
+	INTERFACE
+		-fsycl
+)
+target_link_options(${PROJECT_NAME}_dep_export
+	INTERFACE
+		-fsycl
 )
 
 
@@ -77,26 +97,36 @@ include(cmake/lib.cmake)
 include(cmake/bin.cmake)
 
 if(BUILD_DEVS)
-	include(CTest)
-	include(FetchContent)
 
 	# --- find package ---
 	# find_package(foo REQUIRED)
+	find_package(Pangolin REQUIRED)
 
 	FetchContent_Declare(doctest
 		GIT_REPOSITORY https://github.com/doctest/doctest.git
 	)
 	FetchContent_Populate(doctest)  # doctestのincludeパスが多すぎるので...
 
+	# 
+	# FetchContent_Declare(pangolin
+	# 	GIT_REPOSITORY https://github.com/stevenlovegrove/Pangolin
+	# )
+	# FetchContent_Populate(pangolin)
+
 	# --- 依存の指定 ---
 	add_library(${PROJECT_NAME}_dev_dep INTERFACE EXCLUDE_FROM_ALL)
 	target_link_libraries(${PROJECT_NAME}_dev_dep
 		INTERFACE
 			# add dev dependencies
+			pango_display
 	)
 	target_include_directories(${PROJECT_NAME}_dev_dep
 		INTERFACE
 			${doctest_SOURCE_DIR}/doctest/  # doctestのincludeパスが多すぎるので...
+	)
+	target_include_directories(${PROJECT_NAME}_dev_dep
+		INTERFACE
+			/opt/intel/oneapi/2025.2/include/
 	)
 
 	set(install_example_target_list "")
@@ -114,7 +144,6 @@ endif()
 # --- インストール設定 ---
 include(GNUInstallDirs)
 
-message("install_target_list: ${install_target_list}")
 install(TARGETS
 	${install_target_list}
 	ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/${PROJECT_NAME}

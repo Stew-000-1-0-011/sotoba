@@ -70,3 +70,11 @@ C++滅びないかな。
 icpxなら`std::this_thread::sleep_for`も不要らしい。
 
 続いて、点群のフィルタリングを実装したい。
+
+10/3 stew_cpp_project_generatorを一新し、これによってプロジェクトを作り直した。
+CMakeLists.txtまわりなどが大幅に変更された。
+installとRPATHのあたりを正攻法で直せず(単に真面目に調べる気力がなかった)、RPATHまわりを全部消すことで無理やり対応している。
+このため、作った実行ファイルはLD_LIBRARY_PATHなどでlibsycl.soやlibpango_display.soをただしく紐づけないと動かない。
+
+また、testsの中にvisualize.cppを入れるほかなかったのも恥ずかしい限りだ。sotoba::test::Checkが使いたくて...
+そもそもCheckをtest名前空間に入れなきゃよかったという話かもしれん。

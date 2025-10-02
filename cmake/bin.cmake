@@ -22,7 +22,6 @@ block(PROPAGATE install_target_list)
 			list(APPEND install_target_list "${PROJECT_NAME}_bin_${bin_name}")
 		elseif(NOT IS_DIRECTORY "${bin_entry}")
 			get_filename_component(bin_name "${bin_entry}" NAME_WE)
-			message(STATUS "bin_name: ${bin_name}")
 			add_executable(${PROJECT_NAME}_bin_${bin_name} ${bin_entry})
 			target_link_libraries(${PROJECT_NAME}_bin_${bin_name}
 				PRIVATE

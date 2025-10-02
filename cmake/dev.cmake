@@ -26,7 +26,6 @@ block(PROPAGATE install_example_target_list)
 			RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/releases/tests/"
 		)
 
-		message("add test:")
 		add_test(NAME
 			tests COMMAND $<TARGET_FILE:${PROJECT_NAME}_tests>
 		)
@@ -50,6 +49,7 @@ block(PROPAGATE install_example_target_list)
 				PRIVATE
 					${PROJECT_NAME}_dep_private
 					${PROJECT_NAME}_dep_export
+					${PROJECT_NAME}_dev_dep
 					${PROJECT_NAME}_lib
 					${PROJECT_NAME}_build_private
 					${PROJECT_NAME}_build_export
@@ -62,7 +62,6 @@ block(PROPAGATE install_example_target_list)
 			list(APPEND install_example_target_list ${PROJECT_NAME}_exam_${exam_name})
 		elseif(NOT IS_DIRECTORY ${exam_entry})
 			get_filename_component(exam_name "${exam_entry}" NAME_WE)
-			message("exam_name: ${exam_name}")
 			
 			add_executable(${PROJECT_NAME}_exam_${exam_name} EXCLUDE_FROM_ALL
 				${exam_entry}
@@ -71,6 +70,7 @@ block(PROPAGATE install_example_target_list)
 				PRIVATE
 					${PROJECT_NAME}_dep_private
 					${PROJECT_NAME}_dep_export
+					${PROJECT_NAME}_dev_dep
 					${PROJECT_NAME}_lib
 					${PROJECT_NAME}_build_private
 					${PROJECT_NAME}_build_export
@@ -83,7 +83,8 @@ block(PROPAGATE install_example_target_list)
 			list(APPEND install_example_target_list ${PROJECT_NAME}_exam_${exam_name})
 		endif()
 	endforeach()
-	message(STATUS "install_example_target_list: ${install_example_target_list}")
-	add_custom_target(${PROJECT_NAME}_examples)
-	add_dependencies(${PROJECT_NAME}_examples ${install_example_target_list})
+	if(install_example_target_list)
+		add_custom_target(${PROJECT_NAME}_examples)
+		add_dependencies(${PROJECT_NAME}_examples ${install_example_target_list})
+	endif()
 endblock()
