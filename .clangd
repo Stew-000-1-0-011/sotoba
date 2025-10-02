@@ -1,0 +1,11 @@
+CompileFlags:
+  Add:
+    - -Wall
+    - -Wextra
+    - -Wpedantic
+    - -g
+    - -std=c++23
+    - -I~/.local/acpp/include/AdaptiveCpp/
+  Compiler: clang++
+# Completion:
+#   - HeaderInsertion: Never
