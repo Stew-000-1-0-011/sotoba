@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
 project(sotoba
-
 	VERSION 0.0.0
 	DESCRIPTION "todo"
 	LANGUAGES CXX
