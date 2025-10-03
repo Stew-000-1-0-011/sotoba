@@ -135,6 +135,16 @@ endif()
 # 		FOO
 # )
 
+add_executable(${PROJECT_NAME}_expanded_cpp EXCLUDE_FROM_ALL
+	expanded_cpp.cpp
+)
+target_link_libraries(${PROJECT_NAME}_expanded_cpp
+	PRIVATE
+		${PROJECT_NAME}_dep_private
+		${PROJECT_NAME}_dep_export
+		${PROJECT_NAME}_build_debug_private
+		${PROJECT_NAME}_build_debug_export
+)
 
 # --- インストール設定 ---
 include(GNUInstallDirs)
