@@ -7,6 +7,7 @@ namespace sotoba {
 
 	using u32 = unsigned int;
 	using i32 = int;
+	using u64 = unsigned long long;
 
 	using Vec3 = sycl::float3;
 	using UVec3 = Vec3; // invariant: |v| = 1
