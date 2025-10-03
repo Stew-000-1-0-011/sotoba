@@ -78,3 +78,8 @@ installとRPATHのあたりを正攻法で直せず(単に真面目に調べる�
 
 また、testsの中にvisualize.cppを入れるほかなかったのも恥ずかしい限りだ。sotoba::test::Checkが使いたくて...
 そもそもCheckをtest名前空間に入れなきゃよかったという話かもしれん。
+
+Checkが云々というより、浮動小数点数を扱う型には`+ epsilon`や`* epsilon`ができなくてはならなくて、その上での比較が実装されるべきという話か。
+Approxの実装を眺めつつ、誤差許容比較や誤差付きの世界やそこへの関手を考えてみるべき
+
+howto_use_cmake.mdを書かなきゃ(stew_cpp_project_generatorに入れるべきか？) あと気づいたらREADME.md消し飛んでたや。まあ古い説明しかなかったしいっか。
