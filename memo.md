@@ -87,3 +87,4 @@ howto_use_cmake.mdを書かなきゃ(stew_cpp_project_generatorに入れるべ�
 clang-docが読めるコメントも順次加えていかないと。
 
 もしかして現在の実装だと、点の数は少ないほうが収束が速い...?
+点数が多いとバグる(valid_pointscount == 0になる)のも不思議だ
