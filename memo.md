@@ -83,3 +83,5 @@ Checkが云々というより、浮動小数点数を扱う型には`+ epsilon`�
 Approxの実装を眺めつつ、誤差許容比較や誤差付きの世界を考えるべき
 
 howto_use_cmake.mdを書かなきゃ(stew_cpp_project_generatorに入れるべきか？) あと気づいたらREADME.md消し飛んでたや。まあ古い説明しかなかったしいっか。
+
+clang-docが読めるコメントも順次加えていかないと。
