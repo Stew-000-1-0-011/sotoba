@@ -1,4 +1,3 @@
 cmake -B build -GNinja -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=clang++-20 -DCMAKE_BUILD_TYPE=Debug -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON -DBUILD_STATIC_LIB=ON -DBUILD_SHARED_LIB=ON -DBUILD_MODULE_LIB=ON
 cmake --build build/
-# cmake --build build/ --target sotoba_examples
 # cmake --build build/ --target sotoba_tests
