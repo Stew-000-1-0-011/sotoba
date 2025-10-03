@@ -1,6 +1,5 @@
 #pragma once
 
-#define SYCL_SIMPLE_SWIZZLES
 #include <sycl/sycl.hpp>
 
 namespace sotoba {

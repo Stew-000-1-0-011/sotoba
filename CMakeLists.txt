@@ -65,6 +65,7 @@ target_link_libraries(${PROJECT_NAME}_dep_private
 target_compile_definitions(${PROJECT_NAME}_dep_private
 	INTERFACE
 		# add macro definition if need
+		SYCL_SIMPLE_SWIZZLES
 )
 
 add_library(${PROJECT_NAME}_dep_export INTERFACE EXCLUDE_FROM_ALL)
@@ -73,11 +74,6 @@ target_link_libraries(${PROJECT_NAME}_dep_export
 		# add exported dependencies (s.t. any header depends)
 		Eigen3::Eigen
 )
-target_include_directories(${PROJECT_NAME}_dep_export
-	INTERFACE
-		$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-		$<INSTALL_INTERFACE:include>
-)
 target_compile_options(${PROJECT_NAME}_dep_export
 	INTERFACE
 		-fsycl
@@ -85,6 +81,10 @@ target_compile_options(${PROJECT_NAME}_dep_export
 target_link_options(${PROJECT_NAME}_dep_export
 	INTERFACE
 		-fsycl
+)
+target_include_directories(${PROJECT_NAME}_dep_export
+	INTERFACE
+		/opt/intel/oneapi/2025.2/include/
 )
 
 
@@ -122,10 +122,6 @@ if(BUILD_DEVS)
 	target_include_directories(${PROJECT_NAME}_dev_dep
 		INTERFACE
 			${doctest_SOURCE_DIR}/doctest/  # doctestのincludeパスが多すぎるので...
-	)
-	target_include_directories(${PROJECT_NAME}_dev_dep
-		INTERFACE
-			/opt/intel/oneapi/2025.2/include/
 	)
 
 	set(install_example_target_list "")

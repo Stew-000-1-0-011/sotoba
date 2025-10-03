@@ -18,6 +18,11 @@ block(PROPAGATE install_target_list)
 				${PROJECT_NAME}_dep_export
 				${PROJECT_NAME}_build_export
 		)
+		target_include_directories(${PROJECT_NAME}_lib
+			PUBLIC
+				$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+				$<INSTALL_INTERFACE:include>
+		)
 
 		if(BUILD_STATIC_LIB)
 			add_library(${PROJECT_NAME}_static_lib STATIC $<TARGET_OBJECTS:${PROJECT_NAME}_lib>)
@@ -69,6 +74,11 @@ block(PROPAGATE install_target_list)
 			INTERFACE
 				${PROJECT_NAME}_dep_export
 				${PROJECT_NAME}_build_export
+		)
+		target_include_directories(${PROJECT_NAME}_lib
+			INTERFACE
+				$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+				$<INSTALL_INTERFACE:include>
 		)
 	endif()
 endblock()
