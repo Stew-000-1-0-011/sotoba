@@ -136,7 +136,7 @@ TEST_SUITE("lib") {
 		}
 	}
 
-	TEST_CASE("A") {
+	TEST_CASE("Integration Test") {
 		sycl::queue q{sycl::cpu_selector_v};
 		std::vector<Rectangle> global_rects = {
 			{.center = {0.f, 0.f, -5.f, 0.f},
