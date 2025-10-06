@@ -4,4 +4,4 @@
 /.cache/
 /compile_commands.json
 /build.bash
-/expanded_cpp.cpp
+/src/bin/expanded_cpp.cpp
