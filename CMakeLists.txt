@@ -106,12 +106,6 @@ if(BUILD_DEVS)
 	)
 	FetchContent_Populate(doctest)  # doctestのincludeパスが多すぎるので...
 
-	# 
-	# FetchContent_Declare(pangolin
-	# 	GIT_REPOSITORY https://github.com/stevenlovegrove/Pangolin
-	# )
-	# FetchContent_Populate(pangolin)
-
 	# --- 依存の指定 ---
 	add_library(${PROJECT_NAME}_dev_dep INTERFACE EXCLUDE_FROM_ALL)
 	target_link_libraries(${PROJECT_NAME}_dev_dep
