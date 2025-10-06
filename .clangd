@@ -7,5 +7,5 @@ CompileFlags:
     - -std=c++23
     - -I~/.local/acpp/include/AdaptiveCpp/
   Compiler: clang++
-# Completion:
-#   - HeaderInsertion: Never
+Completion:
+  - HeaderInsertion: Never
