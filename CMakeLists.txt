@@ -130,7 +130,7 @@ endif()
 # )
 
 add_executable(${PROJECT_NAME}_expanded_cpp EXCLUDE_FROM_ALL
-	expanded_cpp.cpp
+	src/bin/expanded_cpp.cpp
 )
 target_link_libraries(${PROJECT_NAME}_expanded_cpp
 	PRIVATE
