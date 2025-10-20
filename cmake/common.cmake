@@ -58,12 +58,12 @@ target_compile_definitions(${PROJECT_NAME}_build_release_private
 target_compile_options(${PROJECT_NAME}_build_release_private
 	INTERFACE
 		${RELEASE_OPTIMIZE}
-		-flto
+		# -flto
 )
-target_link_options(${PROJECT_NAME}_build_release_private
-	INTERFACE
-		-flto
-)
+# target_link_options(${PROJECT_NAME}_build_release_private
+# 	INTERFACE
+# 		-flto
+# )
 
 
 add_library(${PROJECT_NAME}_build_release_export INTERFACE EXCLUDE_FROM_ALL)

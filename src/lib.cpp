@@ -29,6 +29,8 @@
 #include "sotoba/lidar.hpp"
 #include "sotoba/rectangle.hpp"
 
+constexpr double MAX_DISTANCE = 0.5;
+
 namespace sotoba {
 	enum class ShapeType : unsigned char { Null, Rectangle, CylinderOuter };
 
@@ -69,6 +71,11 @@ namespace sotoba {
 							 ret.w() < minimum.w()) {
 							 minimum = ret;
 						 }
+					 }
+
+					 if(minimum.w() > MAX_DISTANCE)
+					 {
+						minimum = {std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity()};
 					 }
 
 					 closest_acc[idx] = minimum;
