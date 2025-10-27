@@ -29,7 +29,6 @@
 #include "sotoba/lidar.hpp"
 #include "sotoba/rectangle.hpp"
 
-constexpr double MAX_DISTANCE = 0.5;
 
 namespace sotoba {
 	enum class ShapeType : unsigned char { Null, Rectangle, CylinderOuter };
@@ -46,7 +45,8 @@ namespace sotoba {
 		sycl::buffer<Vec4>& lidar_points_buf,
 		sycl::buffer<Rectangle>& rectangles_buf,
 		sycl::buffer<CylinderOuter>& cylinder_outers_buf,
-		sycl::buffer<Vec4>& closest_points_buf
+		sycl::buffer<Vec4>& closest_points_buf,
+		double max_distance
 	) {
 		q.submit([&](sycl::handler& h) {
 			 auto lidar_acc = lidar_points_buf.get_access<sycl::access::mode::read>(h);
@@ -73,7 +73,7 @@ namespace sotoba {
 						 }
 					 }
 
-					 if(minimum.w() > MAX_DISTANCE)
+					 if(minimum.w() > max_distance)
 					 {
 						minimum = {std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity()};
 					 }
@@ -243,7 +243,7 @@ namespace sotoba {
 		 }).wait_and_throw();
 		// std::this_thread::sleep_for(1ms);
 	}
-
+ 
 	auto icp_self_localization(
 		sycl::queue& q,
 		const SE3& initial,
@@ -253,7 +253,8 @@ namespace sotoba {
 		sycl::buffer<Rectangle>& global_rects_buf,
 		sycl::buffer<CylinderOuter>& global_cyls_buf,
 		sycl::buffer<Rectangle>& local_rects_buf,
-		sycl::buffer<CylinderOuter>& local_cyls_buf
+		sycl::buffer<CylinderOuter>& local_cyls_buf,
+		double max_distance
 	) -> SE3 {
 		// using namespace std::chrono_literals;
 
@@ -280,7 +281,8 @@ namespace sotoba {
 				lidar_points_buf,
 				local_rects_buf,
 				local_cyls_buf,
-				closest_points_buf
+				closest_points_buf,
+				max_distance
 			);
 
 			// std::this_thread::sleep_for(1ms);

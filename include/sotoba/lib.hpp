@@ -13,7 +13,8 @@ namespace sotoba {
 		sycl::buffer<Vec4>& lidar_points_buf,
 		sycl::buffer<Rectangle>& rectangles_buf,
 		sycl::buffer<CylinderOuter>& cylinder_outers_buf,
-		sycl::buffer<Vec4>& closest_points_buf
+		sycl::buffer<Vec4>& closest_points_buf,
+		double max_distance
 	);
 
 	// 2パス法を採用。桁落ちを防ぐため
@@ -50,7 +51,8 @@ namespace sotoba {
 		sycl::buffer<Rectangle>& global_rects_buf,
 		sycl::buffer<CylinderOuter>& global_cyls_buf,
 		sycl::buffer<Rectangle>& local_rects_buf,
-		sycl::buffer<CylinderOuter>& local_cyls_buf
+		sycl::buffer<CylinderOuter>& local_cyls_buf,
+		double max_distance
 	) -> SE3;
 
 	void simulate_lidar(
