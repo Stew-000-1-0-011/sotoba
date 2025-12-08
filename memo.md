@@ -5,6 +5,7 @@
 - examplesの入力ファイルをディレクトリに纏める
 - tikhonovの扱いがsvd_icpとnormal_known_icpで異なるのを統一する。
   n倍されるほうとn倍されないほうのどちらも欲しい予感はある
+- find_packageされられるように色々準備
 
 ## 11/27
 `apt remove intel-oneapi-vtune`した後に`apt autoremove`するとintel-oneapi-base-toolkit全部が消し飛ぶので注意。
