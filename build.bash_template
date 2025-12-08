@@ -1,7 +1,7 @@
 set -eu
 
 # ONEAPI_ROOT が空の場合のみ実行する（これで冪等性が保たれます）
-if [ -z "{$ONEAPI_ROOT:-}" ]; then
+if [ -z "${ONEAPI_ROOT:-}" ]; then
 	# 画面サイズのエラー回避
 	export COLUMNS=80
 	
