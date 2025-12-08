@@ -116,7 +116,15 @@ if(BUILD_DEVS)
 
 	# --- find package ---
 	# find_package(foo REQUIRED)
-	find_package(Pangolin REQUIRED)
+	# find_package(Pangolin REQUIRED)
+
+	FetchContent_Declare(
+		Pangolin
+		GIT_REPOSITORY https://github.com/stevenlovegrove/Pangolin.git
+		GIT_TAG eb51feaf3f4bddb9768d4f8ac93536407a1779cd
+		PATCH_COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/patches/apply_patch.bash" "${CMAKE_CURRENT_SOURCE_DIR}/patches/fix_pangolin.patch"
+	)
+	FetchContent_MakeAvailable(Pangolin)
 
 	FetchContent_Declare(doctest
 		GIT_REPOSITORY https://github.com/doctest/doctest.git
@@ -129,6 +137,8 @@ if(BUILD_DEVS)
 		INTERFACE
 			# add dev dependencies
 			pango_display
+			pango_plot
+			pango_video
 	)
 	target_include_directories(${PROJECT_NAME}_dev_dep
 		INTERFACE
