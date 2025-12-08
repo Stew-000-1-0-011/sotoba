@@ -8,7 +8,8 @@ if [ -z "${ONEAPI_ROOT:-}" ]; then
 	export COLUMNS=80
 	
 	# 出力を捨てつつ実行
-	. /opt/intel/oneapi/setvars.sh > /dev/null 2>&1
+	. /opt/intel/oneapi/setvars.sh
+	# . /opt/intel/oneapi/setvars.sh > /dev/null 2>&1
 fi
 
 # clang
