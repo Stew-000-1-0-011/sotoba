@@ -7,8 +7,8 @@ STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E "\.(c|
 
 if [ -n "$STAGED_FILES" ]; then
 	# フォーマットを実行 (-i で上書き)
-	clang-format-20 -i "$STAGED_FILES"
+	echo "$STAGED_FILES" | xargs clang-format-20 -i
 
 	# フォーマット後のファイルを再度ステージングする
-	git add "$STAGED_FILES"
+	echo "$STAGED_FILES" | xargs git add
 fi
