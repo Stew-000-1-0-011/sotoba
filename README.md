@@ -52,3 +52,39 @@ clang-formatでのフォーマットがされてなければ弾く
 ## clangdについて
 コード補完などはclangdを使用。  
 ビルド時にcompile_commands.jsonをルートディレクトリに出すようにしているので、ルートディレクトリをclang拡張の入ったVSCodeで開けば補完が効くはず。
+
+## ディレクトリ構成
+Cargoを微妙にまねている。  
+- .githooks/  
+  pre-commit, pre-pushのためのbashスクリプト
+- cmake/  
+  CMakeLists.txtの中で呼ばれるcmakeスクリプト
+- **examples/**  
+  サンプルコード。sotobaを使う側の人はまずこれを読んでみてほしい
+- **include/**  
+  ヘッダ。sotobaの処理はだいたいヘッダに書いてある
+  - math/  
+    数学の諸関数/型
+  - random/  
+    シミュレーション用の乱数
+  - sim/  
+    シミュレーション用の諸コード
+  - **surface/**  
+    オブジェクトを構成する曲面が入っている。  
+    新たな曲面を使いたい場合、ここにコードを追加してね
+  - **icp_resource/**  
+    ICPをループ内で呼ぶ場合、毎回メモリ確保などをするのは望ましくない。  
+    そこで、ICPに必要な資源を纏めた型を用意した。この値を生成してから、各ループではrun_icpを呼んでほしい  
+    (**詳しくはexamplesを見てね！**)
+- src  
+  現在は空
+- tests  
+  テストコードが入っている。doctestを使っている
+- .clang*  
+  clangツール用の諸設定ファイル。うまく使ってほしい
+- memo.md  
+  私が書いたメモ。todoなどがある(GitHub Issueにしろはそう)
+- *.txt  
+  examples下の実行に必要な標準入力のプリセット。意味はexamplesコードを読んで確認してね
+- *.bash  
+  上の「使い方」参照
