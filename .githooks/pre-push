@@ -28,7 +28,7 @@ fi
 
 # 1. ビルドの実行
 echo "Running build.bash..."
-if ! bash build.bash; then
+if ! bash build.bash_template; then
 	echo "Error: Build failed."
 	exit 1
 fi

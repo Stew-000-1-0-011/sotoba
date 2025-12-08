@@ -1,17 +1,37 @@
 set -eu
 
-cmake -B clang_build -GNinja -DCMAKE_PREFIX_PATH=../../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=clang++-20 -DCMAKE_BUILD_TYPE=Release -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
-cmake --build clang_build/
-cmake --build clang_build/ --target sotoba_examples
-cmake --build clang_build/ --target sotoba_tests
-cp ./clang_build/compile_commands.json .
+. /opt/intel/oneapi/setvars.sh || echo "setvars.sh has already beeb run."
 
-# cmake -B gcc_build -GNinja -DCMAKE_PREFIX_PATH=../../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_BUILD_TYPE=Release -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
-# cmake --build gcc_build/
-# cmake --build gcc_build/ --target sotoba_examples
-# cmake --build gcc_build/ --target sotoba_tests
+# clang
+cmake -B clang_build/Debug/ -GNinja -DCMAKE_PREFIX_PATH=../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=clang++-20 -DCMAKE_BUILD_TYPE=Debug -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
+cmake --build clang_build/Debug/
+cmake --build clang_build/Debug/ --target sotoba_examples
+cmake --build clang_build/Debug/ --target sotoba_tests
+cp ./clang_build/Debug/compile_commands.json .
 
-# cmake -B icpx_build -GNinja -DCMAKE_PREFIX_PATH=../../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=icpx -DCMAKE_BUILD_TYPE=Release -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
-# cmake --build icpx_build/
-# cmake --build icpx_build/ --target sotoba_examples
-# cmake --build icpx_build/ --target sotoba_tests
+cmake -B clang_build/Release/ -GNinja -DCMAKE_PREFIX_PATH=../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=clang++-20 -DCMAKE_BUILD_TYPE=Release -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
+cmake --build clang_build/Release/
+cmake --build clang_build/Release/ --target sotoba_examples
+cmake --build clang_build/Release/ --target sotoba_tests
+
+# gcc
+cmake -B gcc_build/Debug/ -GNinja -DCMAKE_PREFIX_PATH=../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_BUILD_TYPE=Debug -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
+cmake --build gcc_build/Debug/
+cmake --build gcc_build/Debug/ --target sotoba_examples
+cmake --build gcc_build/Debug/ --target sotoba_tests
+
+cmake -B gcc_build/Release/ -GNinja -DCMAKE_PREFIX_PATH=../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_BUILD_TYPE=Release -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
+cmake --build gcc_build/Release/
+cmake --build gcc_build/Release/ --target sotoba_examples
+cmake --build gcc_build/Release/ --target sotoba_tests
+
+# icpx
+cmake -B icpx_build/Debug/ -GNinja -DCMAKE_PREFIX_PATH=../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=icpx -DCMAKE_BUILD_TYPE=Debug -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
+cmake --build icpx_build/Debug/
+cmake --build icpx_build/Debug/ --target sotoba_examples
+cmake --build icpx_build/Debug/ --target sotoba_tests
+
+cmake -B icpx_build/Release/ -GNinja -DCMAKE_PREFIX_PATH=../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=icpx -DCMAKE_BUILD_TYPE=Release -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
+cmake --build icpx_build/Release/
+cmake --build icpx_build/Release/ --target sotoba_examples
+cmake --build icpx_build/Release/ --target sotoba_tests
