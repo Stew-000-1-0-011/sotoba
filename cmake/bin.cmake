@@ -8,6 +8,7 @@ block(PROPAGATE install_target_list)
 			file(GLOB bin_sources "${bin_entry}/*.cpp")
 			
 			get_filename_component(bin_name "${bin_entry}" NAME)
+			message(STATUS "bin_name: ${bin_name}")
 			
 			add_executable(${PROJECT_NAME}_bin_${bin_name} ${bin_sources})
 			target_link_libraries(${PROJECT_NAME}_bin_${bin_name}
@@ -22,6 +23,7 @@ block(PROPAGATE install_target_list)
 			list(APPEND install_target_list "${PROJECT_NAME}_bin_${bin_name}")
 		elseif(NOT IS_DIRECTORY "${bin_entry}")
 			get_filename_component(bin_name "${bin_entry}" NAME_WE)
+			message(STATUS "bin_name: ${bin_name}")
 			add_executable(${PROJECT_NAME}_bin_${bin_name} ${bin_entry})
 			target_link_libraries(${PROJECT_NAME}_bin_${bin_name}
 				PRIVATE
@@ -33,8 +35,7 @@ block(PROPAGATE install_target_list)
 			)
 			set_target_properties("${PROJECT_NAME}_bin_${bin_name}" PROPERTIES OUTPUT_NAME "${bin_name}")
 			set_target_properties("${PROJECT_NAME}_bin_${bin_name}" PROPERTIES
-				RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/debugs/bin"
-				RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/releases/bin"
+				RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 			)
 			list(APPEND install_target_list "${PROJECT_NAME}_bin_${bin_name}")
 		endif()

@@ -29,12 +29,9 @@ block(PROPAGATE install_target_list)
 			target_link_libraries(${PROJECT_NAME}_static_lib PUBLIC ${PROJECT_NAME}_lib)
 			set_target_properties(${PROJECT_NAME}_static_lib PROPERTIES OUTPUT_NAME static_lib)
 			set_target_properties(${PROJECT_NAME}_static_lib PROPERTIES
-				RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/debugs/bin"
-				LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/debugs/lib"
-				ARCHIVE_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/debugs/lib"
-				RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/releases/bin"
-				LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/releases/lib"
-				ARCHIVE_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/releases/lib"
+				RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+				LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+				ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
 			)
 			list(APPEND install_target_list ${PROJECT_NAME}_static_lib)
 		endif()
@@ -43,13 +40,10 @@ block(PROPAGATE install_target_list)
 			add_library(${PROJECT_NAME}_shared_lib SHARED $<TARGET_OBJECTS:${PROJECT_NAME}_lib>)
 			target_link_libraries(${PROJECT_NAME}_shared_lib PUBLIC ${PROJECT_NAME}_lib)
 			set_target_properties(${PROJECT_NAME}_shared_lib PROPERTIES OUTPUT_NAME shared_lib)
-			set_target_properties(${PROJECT_NAME}_static_lib PROPERTIES
-				RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/debugs/bin"
-				LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/debugs/lib"
-				ARCHIVE_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/debugs/lib"
-				RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/releases/bin"
-				LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/releases/lib"
-				ARCHIVE_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/releases/lib"
+			set_target_properties(${PROJECT_NAME}_shared_lib PROPERTIES
+				RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+				LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+				ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
 			)
 			list(APPEND install_target_list ${PROJECT_NAME}_shared_lib)
 		endif()
@@ -58,13 +52,10 @@ block(PROPAGATE install_target_list)
 			add_library(${PROJECT_NAME}_module_lib MODULE $<TARGET_OBJECTS:${PROJECT_NAME}_lib>)
 			target_link_libraries(${PROJECT_NAME}_module_lib PUBLIC ${PROJECT_NAME}_lib)
 			set_target_properties(${PROJECT_NAME}_module_lib PROPERTIES OUTPUT_NAME module_lib)
-			set_target_properties(${PROJECT_NAME}_static_lib PROPERTIES
-				RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/debugs/bin"
-				LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/debugs/lib"
-				ARCHIVE_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/debugs/lib"
-				RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/releases/bin"
-				LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/releases/lib"
-				ARCHIVE_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/releases/lib"
+			set_target_properties(${PROJECT_NAME}_module_lib PROPERTIES
+				RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+				LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+				ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
 			)
 			list(APPEND install_target_list ${PROJECT_NAME}_module_lib)
 		endif()

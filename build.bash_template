@@ -1,3 +1,17 @@
-cmake -B build -GNinja -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=icpx -DCMAKE_BUILD_TYPE=Release -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON -DBUILD_STATIC_LIB=OFF -DBUILD_SHARED_LIB=OFF -DBUILD_MODULE_LIB=OFF -DCMAKE_PREFIX_PATH=../nonros_install
-# cmake --build build/
-cmake --build build/ --target sotoba_tests
+set -eu
+
+cmake -B clang_build -GNinja -DCMAKE_PREFIX_PATH=../../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=clang++-20 -DCMAKE_BUILD_TYPE=Release -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
+cmake --build clang_build/
+cmake --build clang_build/ --target sotoba_examples
+cmake --build clang_build/ --target sotoba_tests
+cp ./clang_build/compile_commands.json .
+
+# cmake -B gcc_build -GNinja -DCMAKE_PREFIX_PATH=../../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_BUILD_TYPE=Release -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
+# cmake --build gcc_build/
+# cmake --build gcc_build/ --target sotoba_examples
+# cmake --build gcc_build/ --target sotoba_tests
+
+# cmake -B icpx_build -GNinja -DCMAKE_PREFIX_PATH=../../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=icpx -DCMAKE_BUILD_TYPE=Release -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
+# cmake --build icpx_build/
+# cmake --build icpx_build/ --target sotoba_examples
+# cmake --build icpx_build/ --target sotoba_tests

@@ -1,3 +1,8 @@
+## 11/27
+`apt remove intel-oneapi-vtune`した後に`apt autoremove`するとintel-oneapi-base-toolkit全部が消し飛ぶので注意。
+
+## v1以前のメモ
+
 景色の対称性が高いと、ICPの返す値は飛び飛びになってしまう。
 この実装を使う場合は、かならず後段で異常値処理などすること。
 

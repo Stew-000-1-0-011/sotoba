@@ -11,38 +11,39 @@ project(sotoba
 # 	message(FATAL_ERROR "No C++ compiler specified. Please set CMAKE_CXX_COMPILER explicitly (e.g., cmake -DCMAKE_CXX_COMPILER=clang++ ..).")
 # endif()
 
-if(NOT (CMAKE_GENERATOR MATCHES "Ninja" OR CMAKE_GENERATOR MATCHES "Makefiles"))
+if(NOT (CMAKE_GENERATOR MATCHES "Ninja"))
 	message(FATAL_ERROR
-		"Error: This project requires the Ninja or Makefile generator. "
+		"This project requires the Ninja. "
 		"Your current generator is '${CMAKE_GENERATOR}'."
 	)
 endif()
 
-
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-	message(FATAL_ERROR
-		"CMAKE_INSTALL_PREFIX must be set explicitly. Default install prefix is not allowed."
-		"Please configure with -DCMAKE_INSTALL_PREFIX=<path>"
+	message(WARNING
+		"CMAKE_INSTALL_PREFIX should be set explicitly.\n"
+		"Please configure with `-DCMAKE_INSTALL_PREFIX=<path>`.\n"
+		"set CMAKE_INSTALL_PREFIX=./install"
 	)
+	unset(CMAKE_INSTALL_PREFIX CACHE)
+	set(CMAKE_INSTALL_PREFIX ./install CACHE STRING "CMAKE_INSTALL_PREFIX")
+endif()
+
+if(NOT DEFINED CMAKE_BUILD_TYPE OR CMAKE_BUILD_TYPE STREQUAL "")
+	message(WARNING
+		"CMAKE_BUILD_TYPE should be set explicitly.\n"
+		"Please configure with `-DCMAKE_BUILD_TYPE=<Debug or Release>`.\n"
+		"set CMAKE_BUILD_TYPE=Debug"
+	)
+	unset(CMAKE_BUILD_TYPE CACHE)
+	set(CMAKE_BUILD_TYPE Debug CACHE STRING "Choose the type of build.")
 endif()
 
 
 # --- ビルド設定 ---
-include(CTest)
-include(FetchContent)
-
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-## RPATH抹消
-# RPATH を一切使わないようにする
-set(CMAKE_SKIP_BUILD_RPATH TRUE)
-set(CMAKE_SKIP_INSTALL_RPATH TRUE)
-set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
-set(CMAKE_INSTALL_RPATH "")
-
 
 option(BUILD_STATIC_LIB "build static_lib" ON)
 option(BUILD_SHARED_LIB "build shared_lib" ON)
@@ -60,31 +61,33 @@ find_package(Eigen3 REQUIRED)
 add_library(${PROJECT_NAME}_dep_private INTERFACE EXCLUDE_FROM_ALL)
 target_link_libraries(${PROJECT_NAME}_dep_private
 	INTERFACE
-		# add private dependencies (s.t. no header depends but any source depends)
+		Eigen3::Eigen
 )
-target_compile_definitions(${PROJECT_NAME}_dep_private
-	INTERFACE
-		# add macro definition if need
-		SYCL_SIMPLE_SWIZZLES
-)
+if(CMAKE_CXX_COMPILER MATCHES "icpx")
+	target_compile_definitions(${PROJECT_NAME}_dep_private
+		INTERFACE
+			${PROJECT_NAME}_USE_SYCL
+			SYCL2020_DISABLE_DEPRECATION_WARNINGS  #どうもコンパイラ内で処理されていそう？ソースコードで定義しても効果なかった
+			SYCL_SIMPLE_SWIZZLES
+	)
+	target_compile_options(${PROJECT_NAME}_dep_private
+		INTERFACE
+			-fsycl
+	)
+	target_link_options(${PROJECT_NAME}_dep_private
+		INTERFACE
+			-fsycl
+	)
+	target_include_directories(${PROJECT_NAME}_dep_private
+		INTERFACE
+			/opt/intel/oneapi/2025.3/include/
+	)
+endif()
 
 add_library(${PROJECT_NAME}_dep_export INTERFACE EXCLUDE_FROM_ALL)
 target_link_libraries(${PROJECT_NAME}_dep_export
 	INTERFACE
 		# add exported dependencies (s.t. any header depends)
-		Eigen3::Eigen
-)
-target_compile_options(${PROJECT_NAME}_dep_export
-	INTERFACE
-		-fsycl
-)
-target_link_options(${PROJECT_NAME}_dep_export
-	INTERFACE
-		-fsycl
-)
-target_include_directories(${PROJECT_NAME}_dep_export
-	INTERFACE
-		/opt/intel/oneapi/2025.2/include/
 )
 
 
@@ -92,10 +95,24 @@ target_include_directories(${PROJECT_NAME}_dep_export
 set(install_target_list "")
 
 include(cmake/common.cmake)
+
+if(CMAKE_CXX_COMPILER MATCHES "icpx")
+	target_compile_options(${PROJECT_NAME}_build_debug_export
+		INTERFACE
+		-fno-sanitize=all
+	)
+	target_link_options(${PROJECT_NAME}_build_debug_export
+		INTERFACE
+		-fno-sanitize=all
+	)
+endif()
+
 include(cmake/lib.cmake)
-include(cmake/bin.cmake)
+# include(cmake/bin.cmake)
 
 if(BUILD_DEVS)
+	include(CTest)
+	include(FetchContent)
 
 	# --- find package ---
 	# find_package(foo REQUIRED)
@@ -129,20 +146,11 @@ endif()
 # 		FOO
 # )
 
-# add_executable(${PROJECT_NAME}_expanded_cpp EXCLUDE_FROM_ALL
-# 	src/bin/expanded_cpp.cpp
-# )
-# target_link_libraries(${PROJECT_NAME}_expanded_cpp
-# 	PRIVATE
-# 		${PROJECT_NAME}_dep_private
-# 		${PROJECT_NAME}_dep_export
-# 		${PROJECT_NAME}_build_debug_private
-# 		${PROJECT_NAME}_build_debug_export
-# )
 
 # --- インストール設定 ---
 include(GNUInstallDirs)
 
+message("install_target_list: ${install_target_list}")
 install(TARGETS
 	${install_target_list}
 	ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/${PROJECT_NAME}
