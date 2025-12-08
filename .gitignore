@@ -1,7 +1,8 @@
-/build/
+/clang_build/
+/gcc_build/
+/icpx_build/
 /install/
 /.vscode/
 /.cache/
 /compile_commands.json
 /build.bash
-/src/bin/expanded_cpp.cpp
