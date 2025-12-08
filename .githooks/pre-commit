@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# ステージングされたファイルのうち、対象の拡張子(.c, .cpp, .h, .hpp)を抽出
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E "\.(c|cpp|h|hpp)$")
+
+if [ -n "$STAGED_FILES" ]; then
+	# フォーマットを実行 (-i で上書き)
+	clang-format -i "$STAGED_FILES"
+
+	# フォーマット後のファイルを再度ステージングする
+	git add "$STAGED_FILES"
+fi
