@@ -1,3 +1,5 @@
+# If editing `build.bash` is sufficient, do NOT edit `build.bash_template`!
+
 set -eu
 
 # clang
