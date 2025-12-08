@@ -1,5 +1,7 @@
 set -eu
 
+echo "source oneapi/setvars.sh if never done..." >&2
+
 # ONEAPI_ROOT が空の場合のみ実行する（これで冪等性が保たれます）
 if [ -z "${ONEAPI_ROOT:-}" ]; then
 	# 画面サイズのエラー回避
@@ -10,34 +12,40 @@ if [ -z "${ONEAPI_ROOT:-}" ]; then
 fi
 
 # clang
+echo "build clang-debug" >&2
 cmake -B clang_build/Debug/ -GNinja -DCMAKE_PREFIX_PATH=../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=clang++-20 -DCMAKE_BUILD_TYPE=Debug -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
 cmake --build clang_build/Debug/
 cmake --build clang_build/Debug/ --target sotoba_examples
 cmake --build clang_build/Debug/ --target sotoba_tests
 cp ./clang_build/Debug/compile_commands.json .
 
+echo "build clang-release" >&2
 cmake -B clang_build/Release/ -GNinja -DCMAKE_PREFIX_PATH=../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=clang++-20 -DCMAKE_BUILD_TYPE=Release -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
 cmake --build clang_build/Release/
 cmake --build clang_build/Release/ --target sotoba_examples
 cmake --build clang_build/Release/ --target sotoba_tests
 
 # gcc
+echo "build gcc-debug" >&2
 cmake -B gcc_build/Debug/ -GNinja -DCMAKE_PREFIX_PATH=../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_BUILD_TYPE=Debug -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
 cmake --build gcc_build/Debug/
 cmake --build gcc_build/Debug/ --target sotoba_examples
 cmake --build gcc_build/Debug/ --target sotoba_tests
 
+echo "build gcc-release" >&2
 cmake -B gcc_build/Release/ -GNinja -DCMAKE_PREFIX_PATH=../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_BUILD_TYPE=Release -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
 cmake --build gcc_build/Release/
 cmake --build gcc_build/Release/ --target sotoba_examples
 cmake --build gcc_build/Release/ --target sotoba_tests
 
 # icpx
+echo "build icpx-debug" >&2
 cmake -B icpx_build/Debug/ -GNinja -DCMAKE_PREFIX_PATH=../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=icpx -DCMAKE_BUILD_TYPE=Debug -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
 cmake --build icpx_build/Debug/
 cmake --build icpx_build/Debug/ --target sotoba_examples
 cmake --build icpx_build/Debug/ --target sotoba_tests
 
+echo "build icpx-release" >&2
 cmake -B icpx_build/Release/ -GNinja -DCMAKE_PREFIX_PATH=../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=icpx -DCMAKE_BUILD_TYPE=Release -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
 cmake --build icpx_build/Release/
 cmake --build icpx_build/Release/ --target sotoba_examples
