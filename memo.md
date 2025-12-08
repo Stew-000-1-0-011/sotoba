@@ -1,3 +1,11 @@
+## 12/08 todoリスト
+- setup.bash内でclang-format-20などの存在チェック
+- bashスクリプトをディレクトリに纏める(そして各bash内のパスを修正)
+- PangolinをFetchContentしてないのはなんでだっけ。こっちで一度ビルドする必要があるんだっけ？
+- examplesの入力ファイルをディレクトリに纏める
+- tikhonovの扱いがsvd_icpとnormal_known_icpで異なるのを統一する。
+  n倍されるほうとn倍されないほうのどちらも欲しい予感はある
+
 ## 11/27
 `apt remove intel-oneapi-vtune`した後に`apt autoremove`するとintel-oneapi-base-toolkit全部が消し飛ぶので注意。
 
