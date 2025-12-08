@@ -1,8 +1,13 @@
 set -eu
 
-export COLUMNS=80
-export LINES=24
-. /opt/intel/oneapi/setvars.sh > /dev/null 2>&1 || echo "setvars.sh has already been run."
+# ONEAPI_ROOT が空の場合のみ実行する（これで冪等性が保たれます）
+if [ -z "$ONEAPI_ROOT" ]; then
+	# 画面サイズのエラー回避
+	export COLUMNS=80
+	
+	# 出力を捨てつつ実行
+	. /opt/intel/oneapi/setvars.sh > /dev/null 2>&1
+fi
 
 # clang
 cmake -B clang_build/Debug/ -GNinja -DCMAKE_PREFIX_PATH=../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=clang++-20 -DCMAKE_BUILD_TYPE=Debug -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
