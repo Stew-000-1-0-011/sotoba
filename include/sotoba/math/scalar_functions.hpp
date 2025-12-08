@@ -7,7 +7,7 @@
 #include "sotoba/stdtypes.hpp"
 
 #ifdef sotoba_USE_SYCL
-#include "sotoba/use_sycl.hpp"
+	#include "sotoba/use_sycl.hpp"
 #endif
 
 namespace sotoba::math {
@@ -16,7 +16,7 @@ namespace sotoba::math {
 			sizeof(float) == sizeof(i32),
 			"float must be 32 bits (IEEE 754 single precision)"
 		);
-		
+
 		const float xhalf = 0.5f * x;
 		i32 i = std::bit_cast<i32>(x);
 		i = 0x5F3759DF - (i >> 1);
@@ -28,19 +28,19 @@ namespace sotoba::math {
 	}
 
 	inline constexpr auto clamp(const float x, const float mi, const float ma) noexcept -> float {
-		#ifdef sotoba_USE_SYCL
+#ifdef sotoba_USE_SYCL
 		return sycl::clamp(x, mi, ma);
-		#else
+#else
 		return std::clamp(x, mi, ma);
-		#endif
+#endif
 	}
 
 	inline constexpr auto fabs(const float x) noexcept -> float {
-		#ifdef sotoba_USE_SYCL
+#ifdef sotoba_USE_SYCL
 		return sycl::fabs(x);
-		#else
+#else
 		return std::fabs(x);
-		#endif
+#endif
 	}
 
 	inline constexpr auto pow2(const float x) noexcept -> float {
@@ -48,42 +48,42 @@ namespace sotoba::math {
 	}
 
 	inline constexpr auto sqrt(const float x) noexcept -> float {
-		#ifdef sotoba_USE_SYCL
+#ifdef sotoba_USE_SYCL
 		return sycl::sqrt(x);
-		#else
+#else
 		return std::sqrt(x);
-		#endif
+#endif
 	}
 
 	inline constexpr auto sin(const float x) noexcept -> float {
-		#ifdef sotoba_USE_SYCL
+#ifdef sotoba_USE_SYCL
 		return sycl::sin(x);
-		#else
+#else
 		return std::sin(x);
-		#endif
+#endif
 	}
 
 	inline constexpr auto cos(const float x) noexcept -> float {
-		#ifdef sotoba_USE_SYCL
+#ifdef sotoba_USE_SYCL
 		return sycl::cos(x);
-		#else
+#else
 		return std::cos(x);
-		#endif
+#endif
 	}
 
 	inline constexpr auto fmod(const float x, const float y) noexcept -> float {
-		#ifdef sotoba_USE_SYCL
+#ifdef sotoba_USE_SYCL
 		return sycl::fmod(x, y);
-		#else
+#else
 		return std::fmod(x, y);
-		#endif
+#endif
 	}
 
 	inline constexpr auto isfinite(const float x) noexcept -> float {
-		#ifdef sotoba_USE_SYCL
+#ifdef sotoba_USE_SYCL
 		return sycl::isfinite(x);
-		#else
+#else
 		return std::isfinite(x);
-		#endif
+#endif
 	}
 } // namespace sotoba::math

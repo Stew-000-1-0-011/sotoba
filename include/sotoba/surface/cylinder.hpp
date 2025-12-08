@@ -3,8 +3,8 @@
 #include <limits>
 #include "sotoba/math/approx_check.hpp"
 #include "sotoba/math/scalar_functions.hpp"
-#include "sotoba/math/vec.hpp"
 #include "sotoba/math/se3.hpp"
+#include "sotoba/math/vec.hpp"
 #include "sotoba/surface/surface.hpp"
 
 namespace sotoba::cylinder_impl {
@@ -43,9 +43,7 @@ namespace sotoba::cylinder_impl {
 			// qの可視性チェック
 			// 原点からqが見えるか
 			const auto dot = vec::dot(-q, dq);
-			if (dot < 0.0f) {
-				return {Vec3{}, Vec{std::numeric_limits<float>::infinity()}};
-			}
+			if (dot < 0.0f) { return {Vec3{}, Vec{std::numeric_limits<float>::infinity()}}; }
 			const auto pq = q - p;
 			return {q, Vec{vec::dot(pq, pq)}};
 		}
@@ -63,10 +61,7 @@ namespace sotoba::cylinder_impl {
 			const auto ce = vertical * axis;
 			const auto ep = cp - ce;
 			if (vec::dot(ep, ep) < math::epsilon) {
-				return {
-					{Vec3{}, Vec{std::numeric_limits<float>::infinity()}}
-					, {}
-				};
+				return {{Vec3{}, Vec{std::numeric_limits<float>::infinity()}}, {}};
 			}
 			const auto n = vec::fast_normalize(ep);
 			const auto dq = this->radius * n;
@@ -75,17 +70,9 @@ namespace sotoba::cylinder_impl {
 			// qの可視性チェック
 			// 原点からqが見えるか
 			const auto dot = vec::dot(-q, n);
-			if (dot < 0.0f) {
-				return {
-					{Vec3{}, Vec{std::numeric_limits<float>::infinity()}}
-					, {}
-				};
-			}
+			if (dot < 0.0f) { return {{Vec3{}, Vec{std::numeric_limits<float>::infinity()}}, {}}; }
 			const auto pq = q - p;
-			return {
-				{q, Vec{vec::dot(pq, pq)}}
-				, n
-			};
+			return {{q, Vec{vec::dot(pq, pq)}}, n};
 		}
 
 		void apply_se3(const SE3& h) noexcept {
@@ -126,28 +113,28 @@ namespace sotoba::cylinder_impl {
 			return math::pow2(t);
 		}
 	};
+
 	static_assert(surface::surfacelike<CylinderOuter>);
-}
+} // namespace sotoba::cylinder_impl
 
 namespace sotoba::surface {
 	using cylinder_impl::CylinderOuter;
 }
 
 #ifdef sotoba_ENABLE_TESTING
-#include <numbers>
+	#include <numbers>
 
-#include <doctest.h>
-
+	#include <doctest.h>
 
 TEST_SUITE("cylinder.hpp") {
 	using namespace sotoba;
-	using sotoba::surface::CylinderOuter;
-	using math::Vec3;
-	using math::Vec4;
-	using math::UVec3;
-	using math::Vec;
 	using math::SE3;
 	using math::UQuaternion;
+	using math::UVec3;
+	using math::Vec;
+	using math::Vec3;
+	using math::Vec4;
+	using sotoba::surface::CylinderOuter;
 	namespace quaternion = math::quaternion;
 	using sotoba::math::ApproxCheck;
 
@@ -194,7 +181,7 @@ TEST_SUITE("cylinder.hpp") {
 			const Vec3 p = {0.0f, 10.0f, 5.0f};
 			const Vec4 res = cyl.closest_pd(p);
 			const Vec3 closest_pt = res.xyz();
-			
+
 			const Vec3 expected_pt = {0.0f, 5.0f, 8.0f};
 
 			CHECK(ApproxCheck{closest_pt} == ApproxCheck{expected_pt});
@@ -204,7 +191,7 @@ TEST_SUITE("cylinder.hpp") {
 			// 側面の点に対する法線
 			const Vec3 p = {3.0f, 0.0f, 10.0f}; // X正方向から
 			auto [res, normal] = cyl.closest_pdn(p);
-			
+
 			// 原点から最近接点は不可視
 			CHECK(res.w() == std::numeric_limits<float>::infinity());
 		}
@@ -224,9 +211,9 @@ TEST_SUITE("cylinder.hpp") {
 			// Y軸上方へ大きく傾いたレイ
 			// 円筒の上端は Y=5, Z=8付近。
 			// レイの傾きが大きく、円筒の無限延長上には当たるが、有限高さには当たらないケース
-			
+
 			// Z=8の位置で Y=6.0 (hheight=5.0より上) になるようなレイ
-			const Vec3 dir = Vec3{0.f, 6.f, 8.f}; 
+			const Vec3 dir = Vec3{0.f, 6.f, 8.f};
 			const UVec3 ray = math::vec::fast_normalize(dir); // 要正規化
 
 			const float res = cyl.ray_collision(ray);
@@ -236,11 +223,11 @@ TEST_SUITE("cylinder.hpp") {
 		SUBCASE("ray_collision: Grazing Edge (Tangent)") {
 			// ちょうど接するラインを狙う (X=5sqrt(6) / 6, Z=10)
 			// 原点から (2.041241452319315, 0, 10) 方向へのレイ
-			const Vec3 dir = Vec3{2.041241452319315f, 0.0f, 10.0f}; 
+			const Vec3 dir = Vec3{2.041241452319315f, 0.0f, 10.0f};
 			const UVec3 ray = math::vec::fast_normalize(dir);
 
 			const float res = cyl.ray_collision(ray);
-			
+
 			// 計算誤差により厳密な接触は判定が難しいが、
 			// ほぼ (1.9595917942265426, 0, 9.6) に近い位置で衝突、もしくはギリギリ交差とみなされるか確認
 			// 判別式 delta が 0 付近になるケース。
@@ -261,28 +248,28 @@ TEST_SUITE("cylinder.hpp") {
 		cyl.axis = UVec3{1.0f, 0.0f, 0.0f};
 		cyl.hheight = 10.0f;
 
-		// 変換: 
+		// 変換:
 		// 1. X軸周りに90度回転 (X軸平行 -> X軸平行のまま変わらない...だと面白くないので)
 		//    Z軸周りに90度回転させます -> Axisが (0, 1, 0) Y軸平行になる
 		// 2. その後、X+5, Z+10 に平行移動
-		
+
 		// Z軸90度回転 (Roll=0, Pitch=0, Yaw=90deg)
 		const float pi_2 = std::numbers::pi_v<float> / 2.0f;
 		const auto rot = SE3::rot(quaternion::ypr({0.0f, 0.0f, pi_2}));
-		
+
 		// 平行移動 (5, 0, 10)
 		const auto trans = SE3::trans(Vec3{5.0f, 0.0f, 10.0f});
-		
+
 		// 適用 (Trans * Rot の順序を想定、ライブラリの乗算仕様によるが通常は左から適用)
 		// ここでは個別に適用して動作を確認
-		cyl.apply_se3(rot);   // Axis: X(1,0,0) -> Y(0,1,0)
+		cyl.apply_se3(rot); // Axis: X(1,0,0) -> Y(0,1,0)
 		cyl.apply_se3(trans); // Center: (0,0,0) -> (5,0,10)
 
 		// 期待される状態
 		// Center: (5, 0, 10)
 		// Axis:   (0, 1, 0) 近似
 		// Radius: 1.0
-		
+
 		SUBCASE("Verify Transformation") {
 			CHECK(ApproxCheck{cyl.center} == ApproxCheck{Vec3{5.0f, 0.0f, 10.0f}});
 			CHECK(ApproxCheck{cyl.axis} == ApproxCheck{UVec3{0.0f, 1.0f, 0.0f}});
@@ -295,20 +282,20 @@ TEST_SUITE("cylinder.hpp") {
 			const Vec3 p = {5.0f, 0.0f, 5.0f};
 			const Vec4 res = cyl.closest_pd(p);
 			const Vec3 closest_pt = res.xyz();
-			
+
 			const Vec3 expected_pt = {5.0f, 0.0f, 9.0f};
-			
+
 			CHECK(ApproxCheck{closest_pt} == ApproxCheck{expected_pt});
 		}
-		
+
 		SUBCASE("ray_collision with Transformed Cylinder") {
 			// 原点から (5, 0, 9) に向かうレイ
 			// ちょうど表面で当たるはず
 			Vec3 target = {5.0f, 0.0f, 9.0f};
 			UVec3 ray = math::vec::fast_normalize(target);
-			
+
 			const float res = cyl.ray_collision(ray);
-			
+
 			// ヒット確認
 			CHECK(res != std::numeric_limits<float>::infinity());
 		}

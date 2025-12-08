@@ -24,10 +24,9 @@ namespace my_pango_util::impl {
 		const auto t = h.p;
 
 		Matrix4f ret = Matrix4f::Identity();
-		for(u8 i = 0; i < 3; ++i) for(u8 j = 0; j < 3; ++j) {
-			ret(i, j) = rot[i, j];
-		}
-		for(u8 i = 0; i < 3; ++i) ret(3, i) = t[i];
+		for (u8 i = 0; i < 3; ++i)
+			for (u8 j = 0; j < 3; ++j) { ret(i, j) = rot[i, j]; }
+		for (u8 i = 0; i < 3; ++i) ret(3, i) = t[i];
 		ret(3, 3) = 1;
 
 		return ret;
@@ -53,7 +52,13 @@ namespace my_pango_util::impl {
 		}
 
 		// 姿勢（座標フレーム）を描画する
-		inline void drawPose(const SE3& pose, const float len, const Vec3& xrgb, const Vec3& yrgb, const Vec3& zrgb) {
+		inline void drawPose(
+			const SE3& pose,
+			const float len,
+			const Vec3& xrgb,
+			const Vec3& yrgb,
+			const Vec3& zrgb
+		) {
 			glPushMatrix();
 			const auto mat = pose_to_mat4f(pose);
 			glMultMatrixf(mat.data());
@@ -81,7 +86,7 @@ namespace my_pango_util::impl {
 
 			glPopMatrix();
 		}
-	}
+	} // namespace draw
 
 	// 1. カスタムハンドラクラスを定義
 	struct KeyboardHandler: public pangolin::Handler3D {
@@ -113,20 +118,22 @@ namespace my_pango_util::impl {
 		UpdateF_ update_f;
 		DrawF_ draw_f;
 
-		Pango(std::invocable<const KeyboardHandler&> auto&& update_f, std::invocable<const KeyboardHandler&> auto&& draw_f)
-		: dummy{[] {
-			pangolin::CreateWindowAndBind("sotoba simulation", 1024, 768);
-			glEnable(GL_DEPTH_TEST);
-			return 0;
-		}()}
-		, s_cam{pangolin::ProjectionMatrix(1024, 768, 420, 420, 512, 384, 0.1, 1000), pangolin::ModelViewLookAt(-2, -2, -3, 0, 0, 0, pangolin::AxisY)}
-		, keyboard{s_cam}
-		, d_cam{pangolin::CreateDisplay()
-					.SetBounds(0.0, 1.0, 0.0, 1.0, -1024.0f / 768.0f)
-					.SetHandler(&this->keyboard)}
-		, update_f{std::forward<decltype(update_f)>(update_f)}
-		, draw_f{std::forward<decltype(draw_f)>(draw_f)}
-		{}
+		Pango(
+			std::invocable<const KeyboardHandler&> auto&& update_f,
+			std::invocable<const KeyboardHandler&> auto&& draw_f
+		)
+			: dummy{[] {
+				pangolin::CreateWindowAndBind("sotoba simulation", 1024, 768);
+				glEnable(GL_DEPTH_TEST);
+				return 0;
+			}()}
+			, s_cam{pangolin::ProjectionMatrix(1024, 768, 420, 420, 512, 384, 0.1, 1000), pangolin::ModelViewLookAt(-2, -2, -3, 0, 0, 0, pangolin::AxisY)}
+			, keyboard{s_cam}
+			, d_cam{pangolin::CreateDisplay()
+						.SetBounds(0.0, 1.0, 0.0, 1.0, -1024.0f / 768.0f)
+						.SetHandler(&this->keyboard)}
+			, update_f{std::forward<decltype(update_f)>(update_f)}
+			, draw_f{std::forward<decltype(draw_f)>(draw_f)} {}
 
 		void run() {
 			while (!pangolin::ShouldQuit()) {
@@ -144,11 +151,15 @@ namespace my_pango_util::impl {
 			}
 		}
 	};
-	Pango(std::invocable<const KeyboardHandler&> auto&& update_f, std::invocable<const KeyboardHandler&> auto&& draw_f) -> Pango<std::remove_cvref_t<decltype(update_f)>, std::remove_cvref_t<decltype(draw_f)>>;
+
+	Pango(
+		std::invocable<const KeyboardHandler&> auto&& update_f,
+		std::invocable<const KeyboardHandler&> auto&& draw_f
+	) -> Pango<std::remove_cvref_t<decltype(update_f)>, std::remove_cvref_t<decltype(draw_f)>>;
 } // namespace my_pango_util::impl
 
 namespace my_pango_util {
 	using impl::KeyboardHandler;
 	using impl::Pango;
 	namespace draw = impl::draw;
-}
+} // namespace my_pango_util

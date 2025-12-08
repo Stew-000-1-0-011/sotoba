@@ -20,14 +20,12 @@ namespace sotoba::sim {
 			this->last = Clock::now();
 		}
 
-		template<class Rep_, class Period>
+		template <class Rep_, class Period>
 		void sleep_for(const std::chrono::duration<Rep_, Period>& duration) noexcept {
 			const auto now = Clock::now();
 			const auto elapsed = now - this->last;
-			if(elapsed < duration) {
-				std::this_thread::sleep_for(duration - elapsed);
-			}
+			if (elapsed < duration) { std::this_thread::sleep_for(duration - elapsed); }
 			this->clear();
 		}
 	};
-}
+} // namespace sotoba::sim

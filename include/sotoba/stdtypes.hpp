@@ -10,7 +10,7 @@ namespace sotoba::stdtypes {
 	using u32 = std::uint32_t;
 	using i32 = std::int32_t;
 	using usize = std::size_t;
-}
+} // namespace sotoba::stdtypes
 
 namespace sotoba {
 	using namespace stdtypes;

@@ -11,10 +11,10 @@
 #include "sotoba/stdtypes.hpp"
 
 namespace sotoba::sim::lidar2d_impl {
+	using math::SE3;
 	using math::UVec3;
 	using math::Vec3;
 	using math::Vec4;
-	using math::SE3;
 	namespace quaternion = math::quaternion;
 	using std::numbers::pi;
 
@@ -22,7 +22,7 @@ namespace sotoba::sim::lidar2d_impl {
 	struct Lidar2dConfig final {
 		// FOV, 前方を基準とする
 		std::pair<float, float> azimuth;
-		
+
 		// 誤差
 		float distance_base_sigma;
 		float k_coeff;
@@ -35,39 +35,41 @@ namespace sotoba::sim::lidar2d_impl {
 
 	struct Lidar2d final {
 		u32 points_num;
-		float dt;  // s
-		float rotation_speed;  // rad/s
+		float dt; // s
+		float rotation_speed; // rad/s
 		float distance_base_sigma2;
 		float k_coeff2;
 		float angle_sigma;
 
 		static auto make(const Lidar2dConfig& conf) noexcept -> Lidar2d {
-			constexpr float deg_to_rad = pi / 180.f;			
-			return Lidar2d {
-				.points_num = conf.points_num
-				, .dt = 1.f / conf.point_sampling_rate
-				, .rotation_speed = float(conf.rotation_speed * 2.f * pi)
-				, .distance_base_sigma2 = math::pow2(conf.distance_base_sigma)
-				, .k_coeff2 = math::pow2(conf.k_coeff)
-				, .angle_sigma = conf.angle_sigma * deg_to_rad
+			constexpr float deg_to_rad = pi / 180.f;
+			return Lidar2d{
+				.points_num = conf.points_num,
+				.dt = 1.f / conf.point_sampling_rate,
+				.rotation_speed = float(conf.rotation_speed * 2.f * pi),
+				.distance_base_sigma2 = math::pow2(conf.distance_base_sigma),
+				.k_coeff2 = math::pow2(conf.k_coeff),
+				.angle_sigma = conf.angle_sigma * deg_to_rad
 			};
 		}
 
 		// ロゼッタサンプリングでrayを生成
 		// i番目のレイを返す
-		auto generate_ray(const u32 i, const float t0, auto& normal_distribution_rand_gen) const noexcept -> std::pair<UVec3, UVec3> {
+		auto
+		generate_ray(const u32 i, const float t0, auto& normal_distribution_rand_gen) const noexcept
+			-> std::pair<UVec3, UVec3> {
 			const float t = t0 + i * this->dt;
 
 			// --- リサージュ/スピログラフ的なアプローチ ---
 			// 2つの回転ベクトルの合成として角度を決定
 
-			// 簡易モデル: 
+			// 簡易モデル:
 			// 仰角(El)は高速な振動
 			// 方位角(Az)は[azimuth_min, azimuth_max]間を周回
-			
+
 			// 2. 水平方向の回転
 			const float az = this->rotation_speed * t;
-			
+
 			// // 角にノイズを加える
 			const Vec3 true_rpy = {0.f, 0.f, az};
 			const float noise = normal_distribution_rand_gen();
@@ -79,8 +81,13 @@ namespace sotoba::sim::lidar2d_impl {
 		}
 
 		// 真の距離にノイズを加え返す
-		auto add_distance_noise(const float distance, const float rho2, auto&& normal_distribution_rand_gen) const noexcept -> float {
-			const float cov = this->distance_base_sigma2 + this->k_coeff2 * math::pow2(distance) / rho2;
+		auto add_distance_noise(
+			const float distance,
+			const float rho2,
+			auto&& normal_distribution_rand_gen
+		) const noexcept -> float {
+			const float cov =
+				this->distance_base_sigma2 + this->k_coeff2 * math::pow2(distance) / rho2;
 			return distance + math::sqrt(cov) * normal_distribution_rand_gen();
 		}
 
@@ -93,34 +100,36 @@ namespace sotoba::sim::lidar2d_impl {
 		}
 	};
 
-	inline constexpr auto utm_30lx(const u32 scan_hz, const float down_sampling_rate = 1.f) -> Lidar2dConfig {
-		return Lidar2dConfig {
-			.azimuth = {-180.f, 180.f}
-			, .distance_base_sigma = 0.03f
-			, .k_coeff = 0.0017888543819998318
-			, .angle_sigma = 0.15
-			, .point_sampling_rate = 200'000.f * down_sampling_rate
-			, .rotation_speed = float(scan_hz)
-			, .points_num = u32(200'000 * down_sampling_rate / scan_hz)
+	inline constexpr auto utm_30lx(const u32 scan_hz, const float down_sampling_rate = 1.f)
+		-> Lidar2dConfig {
+		return Lidar2dConfig{
+			.azimuth = {-180.f, 180.f},
+			.distance_base_sigma = 0.03f,
+			.k_coeff = 0.0017888543819998318,
+			.angle_sigma = 0.15,
+			.point_sampling_rate = 200'000.f * down_sampling_rate,
+			.rotation_speed = float(scan_hz),
+			.points_num = u32(200'000 * down_sampling_rate / scan_hz)
 		};
 	}
 
-	inline constexpr auto circle(const u32 scan_hz, const float down_sampling_rate = 1.f) -> Lidar2dConfig {
-		return Lidar2dConfig {
-			.azimuth = {-180.f, 180.f}
-			, .distance_base_sigma = 0.03f
-			, .k_coeff = 0.0017888543819998318
-			, .angle_sigma = 0.15
-			, .point_sampling_rate = 200'000.f * down_sampling_rate
-			, .rotation_speed = float(scan_hz)
-			, .points_num = u32(200'000 * down_sampling_rate / scan_hz)
+	inline constexpr auto circle(const u32 scan_hz, const float down_sampling_rate = 1.f)
+		-> Lidar2dConfig {
+		return Lidar2dConfig{
+			.azimuth = {-180.f, 180.f},
+			.distance_base_sigma = 0.03f,
+			.k_coeff = 0.0017888543819998318,
+			.angle_sigma = 0.15,
+			.point_sampling_rate = 200'000.f * down_sampling_rate,
+			.rotation_speed = float(scan_hz),
+			.points_num = u32(200'000 * down_sampling_rate / scan_hz)
 		};
 	}
-}
+} // namespace sotoba::sim::lidar2d_impl
 
 namespace sotoba::sim {
+	using lidar2d_impl::circle;
 	using lidar2d_impl::Lidar2d;
 	using lidar2d_impl::Lidar2dConfig;
 	using lidar2d_impl::utm_30lx;
-	using lidar2d_impl::circle;
-}
+} // namespace sotoba::sim

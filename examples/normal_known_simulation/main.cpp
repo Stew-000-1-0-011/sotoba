@@ -7,8 +7,8 @@
 #include <thread>
 #include <variant>
 
-#include "sotoba/icp_resource/resource.hpp"
 #include "sotoba/icp_resource/normal_known_icp.hpp"
+#include "sotoba/icp_resource/resource.hpp"
 
 #include "sotoba/math/quaternion.hpp"
 #include "sotoba/math/scalar_functions.hpp"
@@ -18,8 +18,8 @@
 #include "sotoba/random/xoshiro256pp.hpp"
 
 #include "sotoba/repr.hpp"
-#include "sotoba/sim/rosetta_lidar.hpp"
 #include "sotoba/sim/lap_timer.hpp"
+#include "sotoba/sim/rosetta_lidar.hpp"
 
 #include "sotoba/surface/box.hpp"
 #include "sotoba/surface/rectangle.hpp"
@@ -50,7 +50,6 @@ int main() {
 	std::cin >> trans_speed >> rot_speed;
 	std::cin >> tikhnov[0] >> tikhnov[1] >> tikhnov[2] >> tikhnov[3] >> tikhnov[4] >> tikhnov[5];
 
-
 	// オブジェクト作成
 	// データの実体グループ1: 静的な環境（壁や床など）
 	std::vector<Variant> environment_storage{};
@@ -73,42 +72,54 @@ int main() {
 	// ));
 
 	// 外側を囲う大きな囲い
-	environment_storage.emplace_back(surface::Rectangle(
-		Vec3{0.f, 0.f, -2.f},
-		Vec4{1.f, 0.f, 0.f, 2.f},
-		Vec4{0.f, 1.f, 0.f, 2.f},
-		UVec3{0.f, 0.f, 1.f}
-	));
-	environment_storage.emplace_back(surface::Rectangle(
-		Vec3{0.f, 0.f, 2.f},
-		Vec4{1.f, 0.f, 0.f, 2.f},
-		Vec4{0.f, 1.f, 0.f, 2.f},
-		UVec3{0.f, 0.f, -1.f}
-	));
-	environment_storage.emplace_back(surface::Rectangle(
-		Vec3{-2.f, 0.f, 0.f},
-		Vec4{0.f, 1.f, 0.f, 2.f},
-		Vec4{0.f, 0.f, 1.f, 2.f},
-		UVec3{1.f, 0.f, 0.f}
-	));
-	environment_storage.emplace_back(surface::Rectangle(
-		Vec3{2.f, 0.f, 0.f},
-		Vec4{0.f, 1.f, 0.f, 2.f},
-		Vec4{0.f, 0.f, 1.f, 2.f},
-		UVec3{-1.f, 0.f, 0.f}
-	));
-	environment_storage.emplace_back(surface::Rectangle(
-		Vec3{0.f, -2.f, 0.f},
-		Vec4{0.f, 0.f, 1.f, 2.f},
-		Vec4{1.f, 0.f, 0.f, 2.f},
-		UVec3{0.f, 1.f, 0.f}
-	));
-	environment_storage.emplace_back(surface::Rectangle(
-		Vec3{0.f, 2.f, 0.f},
-		Vec4{0.f, 0.f, 1.f, 2.f},
-		Vec4{1.f, 0.f, 0.f, 2.f},
-		UVec3{0.f, -1.f, 0.f}
-	));
+	environment_storage.emplace_back(
+		surface::Rectangle(
+			Vec3{0.f, 0.f, -2.f},
+			Vec4{1.f, 0.f, 0.f, 2.f},
+			Vec4{0.f, 1.f, 0.f, 2.f},
+			UVec3{0.f, 0.f, 1.f}
+		)
+	);
+	environment_storage.emplace_back(
+		surface::Rectangle(
+			Vec3{0.f, 0.f, 2.f},
+			Vec4{1.f, 0.f, 0.f, 2.f},
+			Vec4{0.f, 1.f, 0.f, 2.f},
+			UVec3{0.f, 0.f, -1.f}
+		)
+	);
+	environment_storage.emplace_back(
+		surface::Rectangle(
+			Vec3{-2.f, 0.f, 0.f},
+			Vec4{0.f, 1.f, 0.f, 2.f},
+			Vec4{0.f, 0.f, 1.f, 2.f},
+			UVec3{1.f, 0.f, 0.f}
+		)
+	);
+	environment_storage.emplace_back(
+		surface::Rectangle(
+			Vec3{2.f, 0.f, 0.f},
+			Vec4{0.f, 1.f, 0.f, 2.f},
+			Vec4{0.f, 0.f, 1.f, 2.f},
+			UVec3{-1.f, 0.f, 0.f}
+		)
+	);
+	environment_storage.emplace_back(
+		surface::Rectangle(
+			Vec3{0.f, -2.f, 0.f},
+			Vec4{0.f, 0.f, 1.f, 2.f},
+			Vec4{1.f, 0.f, 0.f, 2.f},
+			UVec3{0.f, 1.f, 0.f}
+		)
+	);
+	environment_storage.emplace_back(
+		surface::Rectangle(
+			Vec3{0.f, 2.f, 0.f},
+			Vec4{0.f, 0.f, 1.f, 2.f},
+			Vec4{1.f, 0.f, 0.f, 2.f},
+			UVec3{0.f, -1.f, 0.f}
+		)
+	);
 
 	// // データの実体グループ2: 動的な障害物や別のエリア
 	// std::vector<Variant> obstacles_storage;
@@ -136,15 +147,12 @@ int main() {
 		// , std::span{obstacles_storage}
 	};
 
-
 	// LiDAR作成
 	const auto lidar = sim::RosettaLidar::RosettaLidar::make(sim::mid360(scan_hz));
 	// 乱数生成器
 	auto rand_gen_u64 = sotoba::random::Xoshiro256pp{0};
 	std::normal_distribution<float> normal_dist{0.f, 1.f};
-	auto rand_gen = [&]() {
-		return normal_dist(rand_gen_u64);
-	};
+	auto rand_gen = [&]() { return normal_dist(rand_gen_u64); };
 	// ライダー時刻
 	float t = 0.f;
 
@@ -159,7 +167,10 @@ int main() {
 	std::vector<Vec3> point_cloud(lidar.get_points_num());
 
 	// icp_resourceの作成
-	auto icp = icp_resource::to_resource<icp_resource::NormalKnownNonSyclResource>(lidar.get_points_num(), std::span{objects});
+	auto icp = icp_resource::to_resource<icp_resource::NormalKnownNonSyclResource>(
+		lidar.get_points_num(),
+		std::span{objects}
+	);
 
 	// 現在操作されているオブジェクト
 	u32 current_controlled_object = 0;
@@ -177,10 +188,8 @@ int main() {
 		bench_timer.clear();
 		// 入力を処理
 		{
-			for(u8 iobj = 0; iobj < std::min<u64>(10, objects.size()); ++iobj) {
-				if(keys['0' + iobj]) {
-					current_controlled_object = iobj;
-				}
+			for (u8 iobj = 0; iobj < std::min<u64>(10, objects.size()); ++iobj) {
+				if (keys['0' + iobj]) { current_controlled_object = iobj; }
 			}
 
 			Vec3 p{};
@@ -195,7 +204,7 @@ int main() {
 
 			const float dt = timer.lap().count();
 			const auto diff = SE3::trans(trans_speed * dt * p)
-			* SE3::rot(quaternion::ypr(rot_speed * dt * Vec3{roll, pitch, yaw}));
+				* SE3::rot(quaternion::ypr(rot_speed * dt * Vec3{roll, pitch, yaw}));
 
 			true_poses[current_controlled_object] = diff * true_poses[current_controlled_object];
 			std::println("pose_t 0: {}", Repr<SE3>::repr(true_poses[0]));
@@ -204,24 +213,26 @@ int main() {
 
 		// 点群を生成
 		{
-			for(u32 ip = 0; ip < lidar.get_points_num(); ++ip) {
+			for (u32 ip = 0; ip < lidar.get_points_num(); ++ip) {
 				const auto [true_ray, noised_ray] = lidar.generate_ray(ip, t, rand_gen);
-				
+
 				float dist = std::numeric_limits<float>::infinity();
-				for(u8 iobj = 0; iobj < objects.size(); ++iobj) {
-					for(const auto& surf : objects[iobj]) {
-						std::visit([&](const auto& surf) noexcept {
-							auto moved_surf = surf;
-							moved_surf.apply_se3(true_poses[iobj]);
-							const auto res = moved_surf.ray_collision(true_ray);
-							if(res < dist) {
-								dist = res;
-							}
-						}, surf);
+				for (u8 iobj = 0; iobj < objects.size(); ++iobj) {
+					for (const auto& surf : objects[iobj]) {
+						std::visit(
+							[&](const auto& surf) noexcept {
+								auto moved_surf = surf;
+								moved_surf.apply_se3(true_poses[iobj]);
+								const auto res = moved_surf.ray_collision(true_ray);
+								if (res < dist) { dist = res; }
+							},
+							surf
+						);
 					}
 				}
 
-				point_cloud[ip] = lidar.add_distance_noise(math::sqrt(dist), 0.8, rand_gen) * Vec3{noised_ray};
+				point_cloud[ip] =
+					lidar.add_distance_noise(math::sqrt(dist), 0.8, rand_gen) * Vec3{noised_ray};
 				// point_cloud[ip] = Vec{true_ray} * 2.f;
 			}
 			t += lidar.get_scan_time();
@@ -231,7 +242,7 @@ int main() {
 		// ICP
 		{
 			icp.run_icp(std::vector{point_cloud}, tikhnov, loop_num, pow2(accept_distance));
-			for(u8 iobj = 0; iobj < objects.size(); ++iobj) {
+			for (u8 iobj = 0; iobj < objects.size(); ++iobj) {
 				estimated_poses[iobj] = icp.obj_poses[iobj];
 			}
 			std::println("pose_e 0: {}", Repr<SE3>::repr(estimated_poses[0]));
@@ -243,11 +254,23 @@ int main() {
 		bench_timer.clear();
 		// 描画
 		// my_pango_util::draw::drawPose(SE3::ide(), {255.f, 0.f, 0.f}, {0.f, 255.f, 0.f}, {0.f, 0.f, 255.f});
-		for(const auto& true_pose : true_poses) {
-			my_pango_util::draw::drawPose(true_pose, 0.5, {255.f, 0.f, 0.f}, {0.f, 255.f, 0.f}, {0.f, 0.f, 255.f});
+		for (const auto& true_pose : true_poses) {
+			my_pango_util::draw::drawPose(
+				true_pose,
+				0.5,
+				{255.f, 0.f, 0.f},
+				{0.f, 255.f, 0.f},
+				{0.f, 0.f, 255.f}
+			);
 		}
-		for(const auto& estimated_pose : estimated_poses) {
-			my_pango_util::draw::drawPose(estimated_pose, 0.8, {128.f, 0.f, 0.f}, {0.f, 128.f, 0.f}, {0.f, 0.f, 128.f});
+		for (const auto& estimated_pose : estimated_poses) {
+			my_pango_util::draw::drawPose(
+				estimated_pose,
+				0.8,
+				{128.f, 0.f, 0.f},
+				{0.f, 128.f, 0.f},
+				{0.f, 0.f, 128.f}
+			);
 		}
 		my_pango_util::draw::drawPointCloud(point_cloud, {255.f, 255.f, 255.f});
 		std::println("draw: {}", bench_timer.lap());
