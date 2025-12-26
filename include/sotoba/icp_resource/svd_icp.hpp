@@ -102,7 +102,7 @@ namespace sotoba::icp_resource::svd_icp_impl {
 							std::vector<S_>& moved_surf
 						) {
 							for (usize i = 0; i < surf.size(); ++i) {
-								const auto [sid, oid] = osid_depack(osid[i]);
+								const auto [oid, sid] = osid_depack(osid[i]);
 								moved_surf[i] = surf[i];
 								moved_surf[i].apply_se3(this->obj_poses[u8(oid)]);
 							}
@@ -152,7 +152,7 @@ namespace sotoba::icp_resource::svd_icp_impl {
 				for (usize ip = 0; ip < point_cloud.size(); ++ip) {
 					const auto [qd, osid] = this->qs[ip];
 					if (accept_distance2 < qd.w()) { continue; }
-					const u8 iobj = std::to_underlying(osid_depack(osid).second);
+					const u8 iobj = std::to_underlying(osid_depack(osid).first);
 					this->p_centroids[iobj] += point_cloud[ip];
 					this->q_centroids[iobj] += qd.xyz();
 					this->counts[iobj]++;
@@ -166,7 +166,7 @@ namespace sotoba::icp_resource::svd_icp_impl {
 				for (usize ip = 0; ip < point_cloud.size(); ++ip) {
 					const auto [qd, osid] = this->qs[ip];
 					if (accept_distance2 < qd.w()) { continue; }
-					const u8 iobj = std::to_underlying(osid_depack(osid).second);
+					const u8 iobj = std::to_underlying(osid_depack(osid).first);
 					// qをpに近づける
 					this->covariance_matrixs[iobj] += vec::dyad(
 						Vec3{qd.xyz() - q_centroids[iobj]},

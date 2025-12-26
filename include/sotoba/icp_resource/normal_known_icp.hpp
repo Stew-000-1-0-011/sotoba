@@ -47,6 +47,7 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 		std::array<std::vector<ObjSurfId>, sizeof...(Surfaces_)> osids;
 
 		// 点群とその最近接点に関する情報
+		// Vec4: [x,y,z,距離]
 		std::vector<std::pair<std::pair<Vec4, UVec3>, ObjSurfId>> qs;
 
 		// 加算されていくやつら
@@ -117,7 +118,7 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 							std::vector<S_>& moved_surf
 						) {
 							for (usize i = 0; i < surf.size(); ++i) {
-								const auto [sid, oid] = osid_depack(osid[i]);
+								const auto [oid, sid] = osid_depack(osid[i]);
 								moved_surf[i] = surf[i];
 								moved_surf[i].apply_se3(this->obj_poses[u8(oid)]);
 							}
@@ -171,12 +172,15 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 					const auto [qd, n] = qdn;
 					const auto q = qd.xyz();
 					const auto d = qd.w();
-					if (accept_distance2 < d) { continue; }
+					if (accept_distance2 < d) {
+						this->qs[ip].second = ObjSurfId::Null;
+						continue;
+					}
 					const Vec3 p = point_cloud[ip];
 					const float err_n = vec::dot((p - q), n);
 					const Vec3 p_c = vec::cross(p, n);
 
-					const u8 iobj = std::to_underlying(osid_depack(osid).second);
+					const u8 iobj = std::to_underlying(osid_depack(osid).first);
 #ifndef sotoba_USE_SYCL
 					this->b[iobj] += Vec6{err_n * p_c, err_n * n};
 #else

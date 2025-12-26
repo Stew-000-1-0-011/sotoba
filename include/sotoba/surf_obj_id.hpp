@@ -9,7 +9,7 @@ namespace sotoba {
 	enum class ObjSurfId : u16 { Null = u16(-1) };
 
 	inline auto osid_pack(const ObjId oid, const SurfId sid) noexcept -> ObjSurfId {
-		return ObjSurfId(u16(sid) << 8 | u16(oid));
+		return ObjSurfId(u16(oid) << 8 | u16(sid));
 	}
 
 	inline auto osid_depack(const ObjSurfId osid) noexcept -> std::pair<ObjId, SurfId> {
