@@ -24,3 +24,42 @@ index 504dc806..2afe459c 100644
      pangolin::Viewport v;
  
      if( have_text ) {
+diff --git a/components/pango_image/CMakeLists.txt b/components/pango_image/CMakeLists.txt
+index b82e7c3f..1fd9b8d7 100644
+--- a/components/pango_image/CMakeLists.txt
++++ b/components/pango_image/CMakeLists.txt
+@@ -31,7 +31,7 @@ if(BUILD_PANGOLIN_LIBTIFF)
+     if(TIFF_FOUND)
+         target_compile_definitions(${COMPONENT} PRIVATE HAVE_LIBTIFF)
+         target_include_directories(${COMPONENT} PRIVATE ${TIFF_INCLUDE_DIR} )
+-        target_link_libraries(${COMPONENT} PRIVATE ${TIFF_LIBRARY})
++        target_link_libraries(${COMPONENT} PRIVATE TIFF::TIFF)
+         message(STATUS "libtiff Found and Enabled")
+     endif()
+ endif()
+diff --git a/components/pango_video/src/drivers/ffmpeg.cpp b/components/pango_video/src/drivers/ffmpeg.cpp
+index ff0b29a3..140d22f7 100644
+--- a/components/pango_video/src/drivers/ffmpeg.cpp
++++ b/components/pango_video/src/drivers/ffmpeg.cpp
+@@ -261,7 +261,7 @@ FfmpegVideo::~FfmpegVideo()
+     av_free(pFrameOut);
+     av_free(pFrame);
+ 
+-    avcodec_close(pCodecContext);
++    avcodec_free_context(&pCodecContext);
+     avformat_close_input(&pFormatCtx);
+     sws_freeContext(img_convert_ctx);
+ }
+diff --git a/components/pango_video/src/drivers/ffmpeg_output.cpp b/components/pango_video/src/drivers/ffmpeg_output.cpp
+index 975bc65f..2376950f 100644
+--- a/components/pango_video/src/drivers/ffmpeg_output.cpp
++++ b/components/pango_video/src/drivers/ffmpeg_output.cpp
+@@ -199,7 +199,7 @@ FfmpegVideoOutputStream::~FfmpegVideoOutputStream()
+     }
+ 
+     av_free(frame);
+-    avcodec_close(codec_context);
++    avcodec_free_context(&codec_context);
+ }
+ 
+ FfmpegVideoOutput::FfmpegVideoOutput(const std::string& filename, int base_frame_rate, int bit_rate, bool flip_image)
