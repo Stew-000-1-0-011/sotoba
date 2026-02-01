@@ -15,11 +15,11 @@ FILES=$(git ls-files | grep -E '\.(c|cpp|h|hpp)$')
 if [ -n "$FILES" ]; then
 	# xargsを使ってファイルリストを渡し、dry-run(変更せず確認)とWerror(警告をエラー扱い)を実行
 	# 注意: Clang 10以上で --dry-run --Werror が使用可能です
-	echo "$FILES" | xargs clang-format-20 --dry-run --Werror >&2
+	echo "$FILES" | xargs clang-format --dry-run --Werror >&2
 	
 	if [ $? -ne 0 ]; then
 		echo "Error: Code formatting issues detected." >&2
-		echo "Please run clang-format-20 to fix them." >&2
+		echo "Please run clang-format to fix them." >&2
 		exit 1
 	fi
 else
