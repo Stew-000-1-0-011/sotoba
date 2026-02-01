@@ -9,7 +9,7 @@ SVDによるICPとPoint-to-PlaneのICPを実装。
 ## 使い方
 まだfind_packageできるようにはなってない。
 ```
-# 予め、clang-format-20などが入っているか確認してね
+# 予め、clang-formatなどが入っているか確認してね
 
 git clone <このリポジトリ>
 cd <このリポジトリ>
@@ -38,8 +38,8 @@ nano build.bash
 ```
 
 ## 対応環境
-Ubuntu24.04
-(clang-format-20などとベタ書きしてしまったため。そこらへんを一括置換すればWindowsでも動きそう)
+ArchLinux
+(Ubuntu26.04でも動くはず)
 
 ## pre-commit, pre-pushについて
 ### pre-commit
