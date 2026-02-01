@@ -1,5 +1,5 @@
 ## 12/08 todoリスト
-- setup.bash内でclang-format-20などの存在チェック
+- setup.bash内でclang-formatなどの存在チェック
 - bashスクリプトをディレクトリに纏める(そして各bash内のパスを修正)
 - PangolinをFetchContentしてないのはなんでだっけ。こっちで一度ビルドする必要があるんだっけ？
 - examplesの入力ファイルをディレクトリに纏める
