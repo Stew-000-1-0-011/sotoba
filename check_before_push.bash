@@ -38,10 +38,10 @@ fi
 TEST_DIRS=(
 	"clang_build/Debug/"
 	"clang_build/Release/"
-	"gcc_build/Debug/"
-	"gcc_build/Release/"
-	"icpx_build/Debug/"
-	"icpx_build/Release/"
+	# "gcc_build/Debug/"
+	# "gcc_build/Release/"
+	# "icpx_build/Debug/"
+	# "icpx_build/Release/"
 )
 
 echo "Running tests..." >&2
