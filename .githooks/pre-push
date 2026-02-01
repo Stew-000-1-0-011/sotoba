@@ -2,4 +2,4 @@
 
 # chmod +xが必要
 
-. check_before_push.bash
+. check_before_push.bash >&2 check_before_push_output
