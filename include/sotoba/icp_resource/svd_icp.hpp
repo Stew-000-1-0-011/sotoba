@@ -92,6 +92,25 @@ namespace sotoba::icp_resource::svd_icp_impl {
 			const u32 loop_num,
 			const float accept_distance2
 		) noexcept {
+			// best-of-N: 点対点ICPは対応点集合が反復ごとに変わるため単調収束が
+			// 保証されず、最後の反復がたまたま悪化した状態で打ち切られることが
+			// ある(実測で確認済み)。各反復の対応点フィット残差を記録し、
+			// ループ終了後に最良の反復の姿勢へロールバックする。
+			// 注意: 単純な平均残差だけで比較すると、まだ収束しきっていない
+			// 早期の反復で「たまたま近い少数の点」しか対応が取れず、点数は
+			// 少ないのに見かけ上の平均残差が低く出て、誤って最良と判定される
+			// バグが起きうる(実測で確認: 点対面ICPにこの方式をそのまま適用した
+			// ところ、点数を考慮しない場合RMSEが悪化した)。②の壁補正品質判定
+			// (wall_min_inlier_ratio)と同じ考え方で、対応点数が入力点群の
+			// 半数に満たない反復は「最良」候補から除外する。
+			constexpr float kBestOfNMinCountRatio = 0.5f;
+			const usize min_eligible_count =
+				static_cast<usize>(static_cast<float>(point_cloud.size()) * kBestOfNMinCountRatio);
+			std::vector<float> best_score(this->obj_num,
+				std::numeric_limits<float>::infinity());
+			std::vector<SE3> best_pose = this->obj_poses;
+			std::vector<bool> best_has_value(this->obj_num, false);
+
 			for (u32 iloop = 0; iloop < loop_num; ++iloop) {
 				// surfsをobj_posesに従い移動
 				[&]<usize... idxs_>(std::index_sequence<idxs_...>) {
@@ -149,6 +168,7 @@ namespace sotoba::icp_resource::svd_icp_impl {
 					this->q_centroids[iobj] = Vec3{};
 					this->counts[iobj] = 0;
 				}
+				std::vector<float> residual_sum(this->obj_num, 0.f);
 				for (usize ip = 0; ip < point_cloud.size(); ++ip) {
 					const auto [qd, osid] = this->qs[ip];
 					if (accept_distance2 < qd.w()) { continue; }
@@ -156,6 +176,11 @@ namespace sotoba::icp_resource::svd_icp_impl {
 					this->p_centroids[iobj] += point_cloud[ip];
 					this->q_centroids[iobj] += qd.xyz();
 					this->counts[iobj]++;
+					// best-of-N用: このスキャンの入力姿勢(更新前)に対する対応点の
+					// 距離2乗を記録する。この反復で最終的に更新される姿勢の
+					// 厳密なスコアではなく更新直前の姿勢のスコアだが、姿勢更新後に
+					// 対応点を再計算し直すコスト(実質2倍)を避けるための近似。
+					residual_sum[iobj] += qd.w();
 				}
 				for (u8 iobj = 0; iobj < this->obj_num; ++iobj) {
 					if (this->counts[iobj] < 3) continue; // 点が少なすぎるオブジェクトはスキップ
@@ -215,6 +240,28 @@ namespace sotoba::icp_resource::svd_icp_impl {
 
 					// 姿勢を更新
 					this->obj_poses[iobj] = (SE3{qua, t} * this->obj_poses[iobj]).normalize();
+
+					// best-of-N: 対応点数が入力点群の半数未満の反復は「たまたま
+					// 少数の近い点だけ拾えた」可能性があり信頼できないため、
+					// 最良候補の比較対象から除外する(kBestOfNMinCountRatio)。
+					if (this->counts[iobj] >= min_eligible_count) {
+						const float score =
+							residual_sum[iobj] / static_cast<float>(this->counts[iobj]);
+						if (score < best_score[iobj]) {
+							best_score[iobj] = score;
+							best_pose[iobj] = this->obj_poses[iobj];
+							best_has_value[iobj] = true;
+						}
+					}
+				}
+			}
+
+			// ループ終了後、最良だった反復の姿勢へロールバックする
+			// (対応点数の条件を一度も満たさなかったオブジェクトは、最後の
+			// 反復の結果をそのまま使う=従来通りの挙動)。
+			for (u8 iobj = 0; iobj < this->obj_num; ++iobj) {
+				if (best_has_value[iobj]) {
+					this->obj_poses[iobj] = best_pose[iobj];
 				}
 			}
 		}

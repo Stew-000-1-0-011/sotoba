@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cmath>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -108,7 +109,24 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 			const auto tikhonov_w = vec::split<0, 3>(tikhonov);
 			const auto tikhonov_t = vec::split<3, 6>(tikhonov);
 
+			// 適応的収束判定: 点対点ICP(SVD版)は対応点集合が反復ごとに変わるため
+			// 単調収束が保証されず、固定反復回数では最後の反復がたまたま悪化した
+			// 状態で打ち切られることがある(best-of-N方式で対症療法的に緩和した)。
+			// 点対面ICPは接線方向の滑りを構造的に持たないため単調収束しやすいと
+			// されるが、固定5回で本当に収束しきっているかは反復回数を見るだけ
+			// では分からない。反復ごとの姿勢更新量(回転ベクトルwのノルム+並進t
+			// のノルム)を直接測り、閾値未満まで小さくなったら(=これ以上動かない
+			// と判断できたら)早期に打ち切る。best-of-Nのような「過去の反復を
+			// 記憶して選び直す」近似ではなく、収束の定義そのものを直接チェックする
+			// ため、振動していれば正しく反復を続け、収束していれば無駄な反復を
+			// 省略できる。全オブジェクト(縮退等でスキップされるものを除く)が
+			// 収束したら、そのスキャンのrun_icp呼び出し全体を打ち切る。
+			constexpr float kConvergedRotNorm = 0.0005f;    // rad相当
+			constexpr float kConvergedTransNorm = 0.0002f;  // m
+
 			for (u32 iloop = 0; iloop < loop_num; ++iloop) {
+				bool all_converged = true;
+				bool any_active = false;
 				// surfsをobj_posesに従い移動
 				[&]<usize... idxs_>(std::index_sequence<idxs_...>) {
 					(
@@ -227,6 +245,19 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 
 					// 推定姿勢を更新
 					this->obj_poses[iobj] = (diff * this->obj_poses[iobj]).normalize();
+
+					// 適応的収束判定: このオブジェクトの今回の更新量を測る
+					any_active = true;
+					const float rot_norm = std::sqrt(x[0] * x[0] + x[1] * x[1] + x[2] * x[2]);
+					const float trans_norm = std::sqrt(x[3] * x[3] + x[4] * x[4] + x[5] * x[5]);
+					if (rot_norm >= kConvergedRotNorm || trans_norm >= kConvergedTransNorm) {
+						all_converged = false;
+					}
+				}
+				// 対応点を持つオブジェクトが1つ以上あり、その全てが収束したら
+				// 残りの反復を省略する(振動している/未収束の場合は継続する)。
+				if (any_active && all_converged) {
+					break;
 				}
 			}
 		}
