@@ -11,12 +11,8 @@ project(sotoba
 # 	message(FATAL_ERROR "No C++ compiler specified. Please set CMAKE_CXX_COMPILER explicitly (e.g., cmake -DCMAKE_CXX_COMPILER=clang++ ..).")
 # endif()
 
-if(NOT (CMAKE_GENERATOR MATCHES "Ninja"))
-	message(FATAL_ERROR
-		"This project requires the Ninja. "
-		"Your current generator is '${CMAKE_GENERATOR}'."
-	)
-endif()
+# Keep this library generator-agnostic so it can be built by colcon's default
+# Unix Makefiles generator as well as Ninja.
 
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
 	message(WARNING
