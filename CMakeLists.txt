@@ -105,6 +105,11 @@ target_include_directories(${PROJECT_NAME}_headers
 )
 target_compile_features(${PROJECT_NAME}_headers INTERFACE cxx_std_23)
 target_link_libraries(${PROJECT_NAME}_headers INTERFACE Eigen3::Eigen)
+# install(EXPORT ... NAMESPACE sotoba::) はターゲット名をそのまま名前空間化するため、
+# EXPORT_NAME を指定しないと find_package 経由では sotoba::sotoba_headers になってしまい、
+# 下の add_subdirectory 用エイリアス (sotoba::sotoba) と名前が食い違う。
+# 利用側が find_package と add_subdirectory のどちらでも同じ名前を書けるように揃える。
+set_target_properties(${PROJECT_NAME}_headers PROPERTIES EXPORT_NAME ${PROJECT_NAME})
 add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME}_headers)
 
 
