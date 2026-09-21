@@ -65,7 +65,6 @@ include(GNUInstallDirs)
 find_package(Eigen3 REQUIRED)
 
 # --- 依存を指定 ---
-## libとbinの依存が共通 -> binはあくまでlibに従うもの、libの使わないものを使いたいならプロジェクトを分けるべき
 add_library(${PROJECT_NAME}_dep_private INTERFACE EXCLUDE_FROM_ALL)
 target_link_libraries(${PROJECT_NAME}_dep_private
 	INTERFACE
@@ -156,13 +155,6 @@ if(BUILD_DEVS)
 	set(install_example_target_list "")
 	include(cmake/dev.cmake)
 endif()
-
-
-# --- 個別に追加したいものがあればここで ---
-# target_compile_definitions(${PROJECT_NAME}_bin_foo
-# 	PRIVATE
-# 		FOO
-# )
 
 
 # --- インストール設定 ---

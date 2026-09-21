@@ -1,4 +1,4 @@
-block(PROPAGATE install_target_list)
+block()
 	# --- 依存関係の記述 ---
 	#find_package(foo REQUIRED)
 
