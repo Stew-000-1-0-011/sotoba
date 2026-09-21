@@ -74,6 +74,12 @@ Cargoを微妙にまねている。
     (**詳しくはexamplesを見てね！**)
 - tests  
   テストコードが入っている。doctestを使っている
+  - package_test/  
+    `find_package(sotoba)` が実際に動作することを確認するための、
+    sotoba を外部パッケージとして使う最小の利用側(consumer)プロジェクト。
+    sotoba本体の CMakeLists.txt からは add_subdirectory されない。CIや
+    手元での検証で `cmake -S tests/package_test -B <build> -DCMAKE_PREFIX_PATH=<installdir>`
+    のように単独で configure して使う。
 - .clang*  
   clangツール用の諸設定ファイル。うまく使ってほしい
 - memo.md  
