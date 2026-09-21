@@ -551,6 +551,115 @@ TEST_SUITE("normal_known_icp.hpp") {
 		CHECK(icp.correspondence_count(0) <= 25);
 	}
 
+	TEST_CASE("information_matrix: tikhonovを変えても値が変わらない(正則化が焼き込まれていないこと)") {
+		const auto points = sample_points(SE3::trans(Vec3{0.f, 0.f, 5.f}));
+		const SE3 seed = SE3::trans(Vec3{0.05f, 0.f, 4.5f});
+
+		auto icp_zero = make_icp(forward_rect(), 25);
+		icp_zero.obj_pose(0) = seed;
+		const auto err_zero = icp_zero.run_icp(std::span{points}, Vec6{}, 1, 100.f);
+
+		auto icp_big = make_icp(forward_rect(), 25);
+		icp_big.obj_pose(0) = seed;
+		const Vec6 big_tikhonov{1e6f, 1e6f, 1e6f, 1e6f, 1e6f, 1e6f};
+		const auto err_big = icp_big.run_icp(std::span{points}, big_tikhonov, 1, 100.f);
+
+		REQUIRE(err_zero == IcpError::none);
+		REQUIRE(err_big == IcpError::none);
+		// a_w/a_tが実際に積み上がった状態であること (tikhonov=0では正対した
+		// 矩形の面内並進・法線周り回転が不可観測でsolve_failedになるが、
+		// 生の総和自体はコレスキーの成否によらず積み上がっている)。
+		REQUIRE(icp_zero.correspondence_count(0) >= 3);
+		REQUIRE(icp_big.correspondence_count(0) >= 3);
+
+		const auto im_zero = icp_zero.information_matrix(0);
+		const auto im_big = icp_big.information_matrix(0);
+		for (u8 i = 0; i < 6; ++i)
+			for (u8 j = i; j < 6; ++j) { CHECK(im_zero[i, j] == im_big[i, j]); }
+	}
+
+	TEST_CASE("information_matrix: 対称性") {
+		auto icp = make_icp(forward_rect(), 25);
+		const auto points = sample_points(SE3::trans(Vec3{0.f, 0.f, 5.f}));
+		icp.obj_pose(0) = SE3::trans(Vec3{0.05f, 0.f, 4.5f});
+
+		const Vec6 tikhonov{0.001f, 0.001f, 0.001f, 0.001f, 0.001f, 0.001f};
+		const auto err = icp.run_icp(std::span{points}, tikhonov, 1, 100.f);
+		REQUIRE(err == IcpError::none);
+
+		const auto im = icp.information_matrix(0);
+		for (u8 i = 0; i < 6; ++i)
+			for (u8 j = 0; j < 6; ++j) { CHECK(im[i, j] == im[j, i]); }
+	}
+
+	TEST_CASE("information_matrix: 正対した点群では生の総和がa_tブロックの手計算値と一致する") {
+		auto icp = make_icp(forward_rect(), 25);
+		const SE3 true_pose = SE3::trans(Vec3{0.f, 0.f, 5.f});
+		const auto points = sample_points(true_pose);
+		icp.obj_pose(0) = true_pose; // シードなしで完全一致させる
+
+		const auto err = icp.run_icp(std::span{points}, Vec6{}, 1, 100.f);
+		REQUIRE(err == IcpError::none);
+		// tikhonov=0だと面内並進・法線周り回転が不可観測でsolve_failedになるが、
+		// a_w/a_t/a_wtの生の総和はコレスキーの成否によらず積み上がっている。
+		REQUIRE(icp.correspondence_count(0) == 25);
+
+		const auto im = icp.information_matrix(0);
+		// forward_rect()に正対しているので法線は全点(0,0,-1)。
+		// a_t = Σ self_dyad(n) = N * diag(0,0,1) (生の総和、正規化前)。
+		CHECK(im[3, 3] == 0.f);
+		CHECK(im[4, 4] == 0.f);
+		CHECK(im[5, 5] == 25.f);
+		CHECK(im[3, 4] == 0.f);
+		CHECK(im[3, 5] == 0.f);
+		CHECK(im[4, 5] == 0.f);
+
+		// 対応点数で割っても0にならないこと(正規化版として妥当)。
+		const float n = float(icp.correspondence_count(0));
+		CHECK(im[5, 5] / n > 0.f);
+	}
+
+	TEST_CASE("information_matrix: too_few_correspondencesでも生の総和(0除算やゴミではない)が読める") {
+		auto icp = make_icp(backward_rect(), 4);
+		const std::vector<Vec3> points{
+			Vec3{0.f, 0.f, 1.f},
+			Vec3{0.f, 0.f, 2.f},
+			Vec3{0.f, 0.f, 3.f},
+			Vec3{0.f, 0.f, 4.f},
+		};
+		icp.obj_pose(0) = SE3::trans(Vec3{1.f, 2.f, 3.f});
+
+		const Vec6 tikhonov{10.f, 10.f, 10.f, 10.f, 10.f, 10.f};
+		const auto err = icp.run_icp(std::span{points}, tikhonov, 5, 100.f);
+
+		REQUIRE(err == IcpError::none);
+		REQUIRE(icp.obj_status(0) == ObjStatus::too_few_correspondences);
+		REQUIRE(icp.correspondence_count(0) == 0);
+
+		// 対応点が0なので生の総和もクラッシュせず0のまま(tikhonovが焼き込まれていない)。
+		const auto im = icp.information_matrix(0);
+		for (u8 i = 0; i < 6; ++i)
+			for (u8 j = i; j < 6; ++j) { CHECK(im[i, j] == 0.f); }
+
+		const auto res = icp.residual_vector(0);
+		for (u8 i = 0; i < 6; ++i) { CHECK(res[i] == 0.f); }
+	}
+
+	TEST_CASE("residual_vector: 読み取れる") {
+		auto icp = make_icp(forward_rect(), 25);
+		const SE3 true_pose = SE3::trans(Vec3{0.f, 0.f, 5.f});
+		const auto points = sample_points(true_pose);
+		icp.obj_pose(0) = true_pose; // 完全一致 -> 各点の誤差は0
+
+		const auto err = icp.run_icp(std::span{points}, Vec6{}, 1, 100.f);
+		REQUIRE(err == IcpError::none);
+		// b の生の総和はコレスキーの成否によらず積み上がっているので、
+		// 対応点数で確認する(tikhonov=0だとこの配置はsolve_failedになりうる)。
+		REQUIRE(icp.correspondence_count(0) == 25);
+
+		const auto res = icp.residual_vector(0);
+		for (u8 i = 0; i < 6; ++i) { CHECK(res[i] == doctest::Approx(0.f).epsilon(1e-4)); }
+	}
 }
 
 #endif
