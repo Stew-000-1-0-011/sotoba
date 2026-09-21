@@ -129,6 +129,25 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 		// 点が少なすぎて姿勢を更新しない対応点数の閾値。変更しないこと。
 		static constexpr usize min_correspondences = 3;
 
+		/// 点対面ICPを走らせ、obj_poses を更新する。
+		///
+		/// point_cloud はセンサ座標系の点群。面の可視性判定はセンサ原点(0,0,0)を
+		/// 基準に行うため、obj_pose には「マップ座標系の形状をセンサ座標系へ写す変換」
+		/// (= 自己位置の逆変換) を入れること。向きを取り違えると全点が不可視になる。
+		///
+		/// accept_distance2 は対応点として受け入れる距離の **二乗**。
+		///
+		/// point_cloud.size() が points_capacity() を超える場合、バッファの再確保は
+		/// 行わず IcpError::too_many_points を返す。このとき姿勢・状態は一切変化しない。
+		///
+		/// ループ回数は max_loop_num をハード上限とし、これを超えて回ることはない。
+		/// 姿勢を更新した全オブジェクトの更新量 delta2 の最大値が convergence_delta2
+		/// 以下になった時点で打ち切るため、実際の回数は常に max_loop_num 以下になる
+		/// (last_loop_count() で取得できる)。
+		/// 更新されたオブジェクトが1つも無い場合 (全て too_few_correspondences や
+		/// solve_failed の場合) は最大値が 0 のままなので、既定の
+		/// convergence_delta2 = 0.f でも1回で打ち切られる。姿勢が動かない以上
+		/// 回し続けても結果は変わらないため、これは意図した挙動。
 		auto run_icp(
 			std::span<const Vec3> point_cloud,
 			const Vec6& tikhonov,
