@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <optional>
 #include <span>
 #include <tuple>
@@ -245,13 +246,42 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 		/// weighting が不正な値 (負の σ、0 以下の huber_k、非有限値) の場合は
 		/// IcpError::invalid_weighting を返す。このとき呼び出しは何も行わず、
 		/// 姿勢も状態も変化しない。
+		///
+		/// accept_distance2_begin は対応距離ゲートを反復内で粗→細に絞る
+		/// (coarse-to-fine) ためのパラメータ。
+		/// - `accept_distance2_begin <= 0.f` (既定値) のときはスケジュールしない。
+		///   全反復で accept_distance2 を使う、従来と完全に同一の挙動になる。
+		/// - `accept_distance2_begin > 0.f` のときは、1回目の反復で
+		///   accept_distance2_begin、最終反復で accept_distance2 になるよう
+		///   **等比数列**でゲートを絞る。最終反復のゲートは浮動小数点の
+		///   累積誤差を避けるため accept_distance2 に厳密に一致させる
+		///   (等比の積算値ではなく、呼び出し側が指定した値そのものを使う)。
+		///   初期姿勢の誤差が (絞る前の) 対応距離ゲートを超えると誤対応に
+		///   固着しやすいため、広いゲートから始めることで収束半径を広げられる。
+		///
+		/// **反復回数の上限 max_loop_num は増えない**。coarse-to-fine は
+		/// 既存の反復予算の中でゲートを絞るだけであり、追加の反復は行わない。
+		///
+		/// accept_distance2_begin が非有限、または
+		/// `0.f < accept_distance2_begin < accept_distance2` (狭い→広いの
+		/// 逆順、呼び出し側のバグの可能性が高い) の場合は
+		/// IcpError::invalid_accept_schedule を返す。このとき呼び出しは
+		/// 何も行わず、姿勢も状態も変化しない。
+		///
+		/// **早期打ち切りとの相互作用**: convergence_delta2 による早期打ち切りは、
+		/// スケジュールが有効な間はゲートがまだ粗い段階で発動しうるため、
+		/// 現在のゲートが accept_distance2 に達している反復 (スケジュール無効時は
+		/// 常に、スケジュール有効時は最終反復のみ) でのみ許可する。
+		/// そのため、スケジュールを有効にすると早期打ち切りは実質無効になる
+		/// (最終反復でしか判定されず、break しても回る回数は変わらない)。
 		auto run_icp(
 			std::span<const Vec3> point_cloud,
 			const Vec6& tikhonov,
 			const u32 max_loop_num,
 			const float accept_distance2,
 			const float convergence_delta2 = 0.f,
-			const IcpWeighting& weighting = {}
+			const IcpWeighting& weighting = {},
+			const float accept_distance2_begin = 0.f
 		) noexcept -> IcpError {
 			if (point_cloud.size() > this->qs.size()) return IcpError::too_many_points;
 
@@ -266,14 +296,36 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 				const float k = *weighting.huber_k;
 				if (!(k > 0.f) || !math::isfinite(k)) return IcpError::invalid_weighting;
 			}
+			if (!math::isfinite(accept_distance2_begin))
+				return IcpError::invalid_accept_schedule;
+			if (accept_distance2_begin > 0.f && accept_distance2_begin < accept_distance2)
+				return IcpError::invalid_accept_schedule;
 
 			const auto tikhonov_w = vec::split<0, 3>(tikhonov);
 			const auto tikhonov_t = vec::split<3, 6>(tikhonov);
 
 			this->loop_count = 0;
 
+			// 対応距離ゲートの coarse-to-fine スケジュール (ループの外で一度だけ計算)。
+			// accept_distance2_begin <= 0.f なら scheduled=false のままで、
+			// current_gate2 は常に accept_distance2 そのものになる
+			// (従来・重み付け導入前と完全に同一の数値結果を保つため)。
+			const bool scheduled = (accept_distance2_begin > 0.f) && (max_loop_num > 1);
+			const float gate_ratio = scheduled
+				? std::exp(
+					  std::log(accept_distance2 / accept_distance2_begin)
+					  / static_cast<float>(max_loop_num - 1)
+				  )
+				: 1.f;
+			float gate2 = scheduled ? accept_distance2_begin : accept_distance2;
+
 			for (u32 iloop = 0; iloop < max_loop_num; ++iloop) {
 				this->loop_count = iloop + 1;
+
+				// 最終反復では浮動小数点の累積誤差を避け、呼び出し側が指定した
+				// accept_distance2 を厳密に使う。
+				const float current_gate2 =
+					(iloop + 1 == max_loop_num) ? accept_distance2 : gate2;
 
 				// surfsをobj_posesに従い移動
 				[&]<usize... idxs_>(std::index_sequence<idxs_...>) {
@@ -341,7 +393,7 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 					const auto [qd, n] = qdn;
 					const auto q = qd.xyz();
 					const auto d = qd.w();
-					if (accept_distance2 < d) {
+					if (current_gate2 < d) {
 						this->qs[ip].second = ObjSurfId::Null;
 						continue;
 					}
@@ -377,6 +429,12 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 					this->counts[iobj]++;
 					this->weight_sums[iobj] += w;
 				}
+
+				// 次の反復に向けてゲートを等比で絞る。current_gate2 の計算は
+				// 常に accept_distance2 / gate2 の三項演算で行うため、この乗算の
+				// 丸め誤差が current_gate2 に影響することはない。
+				gate2 *= gate_ratio;
+
 				float max_delta2 = 0.f;
 				for (u8 iobj = 0; iobj < this->obj_num; ++iobj) {
 					if (this->counts[iobj] < min_correspondences) {
@@ -433,7 +491,12 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 
 				// 早期打ち切り: 姿勢を更新した全オブジェクトのdelta2の最大値が
 				// convergence_delta2以下ならループを抜ける。max_loop_numがハード上限。
-				if (max_delta2 <= convergence_delta2) break;
+				// ただし、ゲートがまだ粗い段階(スケジュール有効時の最終反復以外)で
+				// 発動すると粗い解のまま終わってしまうため、現在のゲートが
+				// accept_distance2 に到達している反復でのみ判定する。
+				if (!scheduled || iloop + 1 == max_loop_num) {
+					if (max_delta2 <= convergence_delta2) break;
+				}
 			}
 
 			return IcpError::none;

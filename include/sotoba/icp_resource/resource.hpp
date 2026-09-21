@@ -28,6 +28,9 @@ namespace sotoba::icp_resource::resource_impl {
 		/// weighting に不正な値 (負の σ、0 以下の huber_k、非有限値) が指定された。
 		/// 呼び出しは何も行わず、姿勢も状態も変化しない。
 		invalid_weighting,
+		/// accept_distance2_begin が不正 (非有限、または accept_distance2 より小さい)。
+		/// 呼び出しは何も行わず、姿勢も状態も変化しない。
+		invalid_accept_schedule,
 	};
 
 	/// オブジェクトごとの、直近の run_icp における姿勢更新の結果。
