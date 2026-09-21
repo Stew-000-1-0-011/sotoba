@@ -1,6 +1,7 @@
 #include <chrono>
 #include <concepts>
 #include <cstdio>
+#include <iostream>
 #include <limits>
 #include <numbers>
 #include <print>
@@ -36,7 +37,7 @@ using namespace std::chrono_literals;
 using Vec6 = Vec<6>;
 
 int main() {
-	using Variant = std::variant<surface::BoxOuter, surface::Rectangle>;
+	using Variant = std::variant<surface::BoxInner, surface::BoxOuter, surface::Rectangle>;
 
 	u32 loop_num = 10;
 	float accept_distance = 0.06;
@@ -51,15 +52,7 @@ int main() {
 	// オブジェクト作成
 	// データの実体グループ1: 静的な環境（壁や床など）
 	std::vector<Variant> environment_storage{};
-	environment_storage.reserve(2);
-
-	// // 1. BoxOuter: 原点にある正当な箱 (回転なし、全壁あり)
-	// environment_storage.emplace_back(surface::BoxOuter(
-	// 	Vec3{0.0f, 0.0f, 0.0f},  // center
-	// 	SquareMat<3>::ide(),  // rot
-	// 	Vec3{10.0f, 10.0f, 10.0f},   // hlens (ハーフサイズ)
-	// 	std::array<bool, 6>{false, false, false, false, false, false} // 全ての壁が存在
-	// ));
+	environment_storage.reserve(1);
 
 	// // 2. Rectangle: 床面 (Y = -5.0f, 上向き法線)
 	// environment_storage.emplace_back(surface::Rectangle(
@@ -69,53 +62,14 @@ int main() {
 	// 	UVec3{0.0f, 1.0f, 0.0f}      // normal (Y軸)
 	// ));
 
-	// 外側を囲う大きな囲い
+	// 外側を囲う大きな囲い。
+	// 内向き法線の Rectangle 6枚と等価だが、BoxInner なら1個で書ける
+	// (BoxOuter はセンサ原点が外側にある前提なので、囲いには使えない)。
 	environment_storage.emplace_back(
-		surface::Rectangle(
-			Vec3{0.f, 0.f, -2.f},
-			Vec4{1.f, 0.f, 0.f, 2.f},
-			Vec4{0.f, 1.f, 0.f, 2.f},
-			UVec3{0.f, 0.f, 1.f}
-		)
-	);
-	environment_storage.emplace_back(
-		surface::Rectangle(
-			Vec3{0.f, 0.f, 2.f},
-			Vec4{1.f, 0.f, 0.f, 2.f},
-			Vec4{0.f, 1.f, 0.f, 2.f},
-			UVec3{0.f, 0.f, -1.f}
-		)
-	);
-	environment_storage.emplace_back(
-		surface::Rectangle(
-			Vec3{-2.f, 0.f, 0.f},
-			Vec4{0.f, 1.f, 0.f, 2.f},
-			Vec4{0.f, 0.f, 1.f, 2.f},
-			UVec3{1.f, 0.f, 0.f}
-		)
-	);
-	environment_storage.emplace_back(
-		surface::Rectangle(
-			Vec3{2.f, 0.f, 0.f},
-			Vec4{0.f, 1.f, 0.f, 2.f},
-			Vec4{0.f, 0.f, 1.f, 2.f},
-			UVec3{-1.f, 0.f, 0.f}
-		)
-	);
-	environment_storage.emplace_back(
-		surface::Rectangle(
-			Vec3{0.f, -2.f, 0.f},
-			Vec4{0.f, 0.f, 1.f, 2.f},
-			Vec4{1.f, 0.f, 0.f, 2.f},
-			UVec3{0.f, 1.f, 0.f}
-		)
-	);
-	environment_storage.emplace_back(
-		surface::Rectangle(
-			Vec3{0.f, 2.f, 0.f},
-			Vec4{0.f, 0.f, 1.f, 2.f},
-			Vec4{1.f, 0.f, 0.f, 2.f},
-			UVec3{0.f, -1.f, 0.f}
+		surface::BoxInner(
+			Vec3{0.f, 0.f, 0.f}, // center
+			SquareMat<3>::ide(), // rot
+			Vec3{2.f, 2.f, 2.f} // hlens (ハーフサイズ)
 		)
 	);
 
