@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-14 ninja-build libeigen3-dev
+
+      - name: Configure
+        # Pangolinは重いのでCIではBUILD_EXAMPLES=OFFで回す。
+        run: |
+          cmake -B build -GNinja -DCMAKE_CXX_COMPILER=g++-14 \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_DEVS=ON -DBUILD_EXAMPLES=OFF \
+            -DCMAKE_INSTALL_PREFIX=$PWD/install
+
+      - name: Build tests
+        run: cmake --build build --target sotoba_tests
+
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Install
+        run: cmake --install build
+
+      - name: Configure package_test (consumer via find_package)
+        # tests/package_test は sotoba を外部パッケージとして使う最小の利用側プロジェクト。
+        # インストール済みのsotobaがfind_packageで実際に使えることを確認する。
+        run: |
+          cmake -S tests/package_test -B package_test_build -GNinja \
+            -DCMAKE_PREFIX_PATH=$PWD/install
+
+      - name: Build package_test
+        run: cmake --build package_test_build
+
+      - name: Run package_test
+        run: ./package_test_build/sotoba_package_test
