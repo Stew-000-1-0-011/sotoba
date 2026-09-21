@@ -1,0 +1,10 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+# sotoba::sotoba が Eigen3::Eigen を INTERFACE リンクしているため、
+# 利用側の find_package(sotoba) でも Eigen3 を解決できるようにする。
+find_dependency(Eigen3 REQUIRED)
+
+include("${CMAKE_CURRENT_LIST_DIR}/sotobaTargets.cmake")
+
+check_required_components(sotoba)
