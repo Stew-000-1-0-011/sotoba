@@ -4,9 +4,7 @@
 #include <cstdint>
 #include <version>
 
-// -std=c++23 でもコンパイラが未実装だと大量の不可解なエラーになるので先に弾く。
-// Clang 18 は P0847 を実装しているが __cpp_explicit_this_parameter を定義しない
-// ため、マクロが無ければバージョンで判定し、判別できないものは素通しする。
+// Clang 18 は P0847 を実装しているが __cpp_explicit_this_parameter を定義しない。
 #if !defined(__cpp_explicit_this_parameter)
 	#if defined(__clang__)
 		#if __clang_major__ < 18

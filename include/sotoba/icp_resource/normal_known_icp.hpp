@@ -41,23 +41,16 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 	using icp_resource::IcpError;
 	using icp_resource::ObjStatus;
 
-	/// LiDAR の点ごとの誤差モデル。
-	/// 点対面残差の分散を σ_r² cos² + r² σ_θ² (1 - cos²) で見積もる。
+	/// 点対面残差の分散を σ_r² cos² + r² σ_θ² (1 - cos²) と見積もる誤差モデル。
 	struct NoiseModel final {
-		/// ビーム方向(距離方向)のノイズ標準偏差 [m]。
-		float sigma_range;
-		/// 角度ノイズ標準偏差 [rad]。横方向の位置誤差は r * sigma_angle になる。
-		float sigma_angle;
+		float sigma_range; ///< [m]
+		float sigma_angle; ///< [rad]
 	};
 
-	/// run_icp の重み付け設定。既定 (両方とも無指定) では全点の重みが 1 になり、
-	/// 重み付けを入れる前と完全に同一の挙動になる。
 	struct IcpWeighting final {
-		/// 無指定なら全点の重みを 1 とする (ノイズモデルによる重み付けを行わない)。
+		/// 無指定なら全点の重みが 1。
 		std::optional<NoiseModel> noise{};
-		/// Huber カーネルの閾値 k (正規化残差に対する)。無指定ならロバスト化しない。
-		/// noise が無指定の場合、正規化残差は生の残差 [m] そのものになるので、
-		/// k の単位も [m] になる点に注意。
+		/// 正規化残差 e/σ に対する Huber の閾値。noise 無指定なら σ = 1 なので単位は [m]。
 		std::optional<float> huber_k{};
 	};
 
@@ -144,7 +137,6 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 			return this->counts[oid];
 		}
 
-		/// 重みの総和 Σ w_i。重み付けが無効なら対応点数と一致する。
 		auto weight_sum(const u8 oid) const noexcept -> float {
 			return this->weight_sums[oid];
 		}
@@ -153,18 +145,13 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 			return this->loop_count;
 		}
 
-		/// 最後の反復で使われた対応距離ゲート。スケジュール有効時も
-		/// accept_distance2 と厳密に一致する。last_loop_count() == 0 なら無意味。
+		/// 最後の反復で使われたゲート。スケジュール有効時も accept_distance2 に一致する。
 		auto last_accept_distance2() const noexcept -> float {
 			return this->last_gate2;
 		}
 
 		/// 正規方程式の係数行列 A = Σ JᵀNJ。添字 0..2 が回転 w、3..5 が並進 t。
-		/// 正規化も tikhonov 正則化も加えていない生の総和(正則化を混ぜると縮退方向で
-		/// 不確かさを過小評価するため)。正規化するなら correspondence_count(oid)、
-		/// weighting.noise 指定時は weight_sum(oid) で割る。
-		/// 共分散は weighting.noise 指定時なら Cov ≒ A⁻¹、無指定なら Cov ≒ σ² A⁻¹。
-		/// 値は最後に回った反復のもの。last_loop_count() == 0 のときは無意味。
+		/// 正規化も tikhonov も加えていない生の総和。
 		auto information_matrix(const u8 oid) const noexcept -> SymMat<6> {
 			SymMat<6> ret{};
 			for (u8 i = 0; i < 3; ++i)
@@ -182,30 +169,23 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 			return this->b[oid];
 		}
 
-		/// 姿勢を更新するのに必要な最小の対応点数。対応点1つ = スカラー拘束1本なので
-		/// SE3 の6自由度には最低6点が要る。ただし必要条件にすぎず、1枚の平面に
-		/// 正対した点は何点あってもランク落ちする。縮退の検出は
-		/// information_matrix() の固有値を見ること。
+		/// 対応点1つ = スカラー拘束1本なので、SE3 の6自由度には最低6点が要る。
+		/// 必要条件にすぎず、これを満たしてもランク落ちはしうる。
 		static constexpr usize min_correspondences = 6;
 
 		/// 点対面ICPを走らせ、obj_poses を更新する。
 		///
-		/// point_cloud はセンサ座標系。可視性判定はセンサ原点(0,0,0)基準なので、
-		/// obj_pose には自己位置の逆変換(マップ座標系の形状をセンサ座標系へ写す変換)を
-		/// 入れる。向きを取り違えると全点が不可視になる。
+		/// 事前条件: point_cloud はセンサ座標系。可視性判定はセンサ原点(0,0,0)基準
+		/// なので、obj_pose にはマップ座標系の形状をセンサ座標系へ写す変換を入れる。
 		/// accept_distance2 系は距離の二乗。
 		///
-		/// max_loop_num はハード上限で、これを超えて回ることはない(実際の回数は
-		/// last_loop_count())。姿勢を更新できたオブジェクトが無い反復では delta2 が
-		/// 0 のままなので、既定の convergence_delta2 = 0.f でも1回で打ち切る。
-		///
+		/// 反復回数は max_loop_num 以下 (last_loop_count() で取得)。
 		/// accept_distance2_begin > 0.f なら、1回目を accept_distance2_begin、
-		/// 最終反復を accept_distance2 として等比でゲートを絞る(coarse-to-fine)。
-		/// 反復数は増えない。粗いゲートのまま打ち切らないよう、このとき早期打ち切りは
-		/// 最終反復でしか判定されない。
+		/// 最終反復を accept_distance2 として等比でゲートを絞る。反復数は増えない。
+		/// このとき早期打ち切りは最終反復でのみ判定される。
 		///
-		/// 以下は何も行わずに返す(姿勢・状態とも不変):
-		/// - point_cloud.size() > points_capacity() → too_many_points (再確保はしない)
+		/// 以下は何も行わずに返し、姿勢・状態とも変化しない:
+		/// - point_cloud.size() > points_capacity() → too_many_points (再確保しない)
 		/// - weighting が不正 → invalid_weighting
 		/// - accept_distance2_begin が非有限、または accept_distance2 より小さい
 		///   → invalid_accept_schedule
@@ -241,7 +221,6 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 
 			this->loop_count = 0;
 
-			// ゲートのスケジュール。scheduled=false なら常に accept_distance2 のまま。
 			const bool scheduled = (accept_distance2_begin > 0.f) && (max_loop_num > 1);
 			const float gate_ratio = scheduled
 				? std::exp(
@@ -254,7 +233,7 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 			for (u32 iloop = 0; iloop < max_loop_num; ++iloop) {
 				this->loop_count = iloop + 1;
 
-				// 最終反復は積算の丸めを避けて指定値をそのまま使う
+				// 不変条件: 最終反復のゲートは accept_distance2 に厳密に一致する
 				const float current_gate2 =
 					(iloop + 1 == max_loop_num) ? accept_distance2 : gate2;
 				this->last_gate2 = current_gate2;
@@ -368,8 +347,7 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 						this->obj_statuses[iobj] = ObjStatus::too_few_correspondences;
 						continue;
 					}
-					// 正規化と tikhonov は Eigen 側を組むときにだけ適用し、
-					// a_* / b は生の総和のまま残す (information_matrix() のため)。
+					// 不変条件: a_* / b は生の総和のまま。正規化と tikhonov はここでだけ適用する
 					const float n = this->weight_sums[iobj];
 
 					using Matrix6f = Eigen::Matrix<float, 6, 6>;
@@ -410,8 +388,7 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 					if (max_delta2 < delta2) max_delta2 = delta2;
 				}
 
-				// 早期打ち切り。粗いゲートのまま終わらないよう、ゲートが
-				// accept_distance2 に到達している反復でのみ判定する。
+				// 不変条件: 打ち切るのはゲートが accept_distance2 に達した反復のみ
 				if (!scheduled || iloop + 1 == max_loop_num) {
 					if (max_delta2 <= convergence_delta2) break;
 				}
@@ -425,7 +402,6 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 				  NormalKnownResource<ExplanationOnlySurface<0>, ExplanationOnlySurface<1>>,
 				  ExplanationOnlySurface<0>,
 				  ExplanationOnlySurface<1>>);
-	// 面の種類が2つ以外でも成立すること (concept が種類数をハードコードしていない)
 	static_assert(icp_resource::icp_resource<
 				  NormalKnownResource<ExplanationOnlySurface<0>>,
 				  ExplanationOnlySurface<0>>);
@@ -454,9 +430,8 @@ namespace sotoba::icp_resource {
 	#include <doctest.h>
 
 	#include "sotoba/math/approx_check.hpp"
-	// テストが surface::Rectangle / surface::BoxInner を使うので、include 順に
-	// 依存せず自己完結するようここで include しておく。
 	#include "sotoba/surface/box.hpp"
+	// include 順に依存しないための自己完結用
 	#include "sotoba/surface/rectangle.hpp"
 
 TEST_SUITE("normal_known_icp.hpp") {
@@ -477,8 +452,6 @@ TEST_SUITE("normal_known_icp.hpp") {
 	using icp_resource::ObjStatus;
 	using math::ApproxCheck;
 
-	// 原点(0,0,0)から見えるよう、ローカル座標系の中心を(0,0,0)に置いた矩形。
-	// obj_poseで(0,0,5)へ移動させるとrectangle.hppのテストと同じ配置になる。
 	inline auto forward_rect() -> Rectangle {
 		return Rectangle{
 			Vec3{0.f, 0.f, 0.f},
@@ -488,7 +461,6 @@ TEST_SUITE("normal_known_icp.hpp") {
 		};
 	}
 
-	// 法線が原点と逆向きなので、obj_poseをどう動かしても可視化されない矩形。
 	inline auto backward_rect() -> Rectangle {
 		return Rectangle{
 			Vec3{0.f, 0.f, 0.f},
@@ -498,7 +470,6 @@ TEST_SUITE("normal_known_icp.hpp") {
 		};
 	}
 
-	// obj_num=1, 面1枚のNormalKnownResourceを作る
 	inline auto make_icp(const Rectangle& rect, const usize capacity)
 		-> NormalKnownResource<Rectangle> {
 		std::array<std::vector<ObjSurfId>, 1> osids{
@@ -512,9 +483,6 @@ TEST_SUITE("normal_known_icp.hpp") {
 		};
 	}
 
-	// 矩形ローカル座標系の面上の点を、true_poseでセンサ座標系へ写した
-	// (ノイズ無しの)点群を作る。u:[-1.4,1.4], v:[-0.7,0.7] の範囲は
-	// forward_rect() の半辺長(2.0, 1.0)に収まるのでクランプされない。
 	inline auto sample_points(const SE3& true_pose) -> std::vector<Vec3> {
 		std::vector<Vec3> pts;
 		for (int iu = -2; iu <= 2; ++iu) {
@@ -666,9 +634,6 @@ TEST_SUITE("normal_known_icp.hpp") {
 
 		REQUIRE(err_zero == IcpError::none);
 		REQUIRE(err_big == IcpError::none);
-		// a_w/a_tが実際に積み上がった状態であること (tikhonov=0では正対した
-		// 矩形の面内並進・法線周り回転が不可観測でsolve_failedになるが、
-		// 生の総和自体はコレスキーの成否によらず積み上がっている)。
 		REQUIRE(icp_zero.correspondence_count(0) >= 3);
 		REQUIRE(icp_big.correspondence_count(0) >= 3);
 
@@ -679,13 +644,10 @@ TEST_SUITE("normal_known_icp.hpp") {
 	}
 
 	TEST_CASE("run_icp: 対応点が min_correspondences 未満なら姿勢を更新しない") {
-		// 点対面の対応点1つ = スカラー拘束1本なので、SE3 の6自由度を決めるには
-		// 最低 6 点が要る。境界 (5点 / 6点) をまたいで挙動が変わることを確認する。
 		static_assert(NormalKnownResource<Rectangle>::min_correspondences == 6);
 
 		const SE3 true_pose = SE3::trans(Vec3{0.f, 0.f, 5.f});
 		const auto points = sample_points(true_pose); // 25点
-		// 1枚の平面はランク落ちするので、コレスキーを成功させるため tikhonov を入れる
 		const Vec6 tikhonov{0.01f, 0.01f, 0.01f, 0.01f, 0.01f, 0.01f};
 
 		SUBCASE("5点では更新されず、姿勢は呼び出し時の値のまま") {
@@ -739,13 +701,9 @@ TEST_SUITE("normal_known_icp.hpp") {
 
 		const auto err = icp.run_icp(std::span{points}, Vec6{}, 1, 100.f);
 		REQUIRE(err == IcpError::none);
-		// tikhonov=0だと面内並進・法線周り回転が不可観測でsolve_failedになるが、
-		// a_w/a_t/a_wtの生の総和はコレスキーの成否によらず積み上がっている。
 		REQUIRE(icp.correspondence_count(0) == 25);
 
 		const auto im = icp.information_matrix(0);
-		// forward_rect()に正対しているので法線は全点(0,0,-1)。
-		// a_t = Σ self_dyad(n) = N * diag(0,0,1) (生の総和、正規化前)。
 		CHECK(im[3, 3] == 0.f);
 		CHECK(im[4, 4] == 0.f);
 		CHECK(im[5, 5] == 25.f);
@@ -753,7 +711,6 @@ TEST_SUITE("normal_known_icp.hpp") {
 		CHECK(im[3, 5] == 0.f);
 		CHECK(im[4, 5] == 0.f);
 
-		// 対応点数で割っても0にならないこと(正規化版として妥当)。
 		const float n = float(icp.correspondence_count(0));
 		CHECK(im[5, 5] / n > 0.f);
 	}
@@ -775,7 +732,6 @@ TEST_SUITE("normal_known_icp.hpp") {
 		REQUIRE(icp.obj_status(0) == ObjStatus::too_few_correspondences);
 		REQUIRE(icp.correspondence_count(0) == 0);
 
-		// 対応点が0なので生の総和もクラッシュせず0のまま(tikhonovが焼き込まれていない)。
 		const auto im = icp.information_matrix(0);
 		for (u8 i = 0; i < 6; ++i)
 			for (u8 j = i; j < 6; ++j) { CHECK(im[i, j] == 0.f); }
@@ -792,15 +748,12 @@ TEST_SUITE("normal_known_icp.hpp") {
 
 		const auto err = icp.run_icp(std::span{points}, Vec6{}, 1, 100.f);
 		REQUIRE(err == IcpError::none);
-		// b の生の総和はコレスキーの成否によらず積み上がっているので、
-		// 対応点数で確認する(tikhonov=0だとこの配置はsolve_failedになりうる)。
 		REQUIRE(icp.correspondence_count(0) == 25);
 
 		const auto res = icp.residual_vector(0);
 		for (u8 i = 0; i < 6; ++i) { CHECK(res[i] == doctest::Approx(0.f).epsilon(1e-4)); }
 	}
 
-	// --- IcpWeighting ---
 
 	TEST_CASE("run_icp: 既定のIcpWeighting{}ではweight_sumが対応点数と厳密に一致する") {
 		auto icp = make_icp(forward_rect(), 25);
@@ -813,15 +766,10 @@ TEST_SUITE("normal_known_icp.hpp") {
 
 		REQUIRE(err == IcpError::none);
 		REQUIRE(icp.correspondence_count(0) == 25);
-		// 重み付け無効時は weight_sum が counts の厳密な float 表現になる
-		// (w が厳密に1.0fのまま積み上がるため)。
 		CHECK(icp.weight_sum(0) == float(icp.correspondence_count(0)));
 	}
 
 	TEST_CASE("run_icp: ノイズモデルが入射角で効く(正対 vs 斜め)") {
-		// 正対/傾いたそれぞれの配置で sigma_angle を 0 -> 大 にしたときの
-		// information_matrix (trace) の変化率を比べる。
-		// 正対(cos²≈1)ではほぼ変わらず、斜め(cos²が小さい点を含む)では大きく下がる方向。
 		auto trace_of = [](const Rectangle& rect, const SE3& true_pose, const float sigma_angle) {
 			auto icp = make_icp(rect, 25);
 			const auto points = sample_points(true_pose);
@@ -840,9 +788,7 @@ TEST_SUITE("normal_known_icp.hpp") {
 			return trace;
 		};
 
-		// 正対: forward_rect に真正面から (センサ~面の距離5m)
 		const SE3 straight_pose = SE3::trans(Vec3{0.f, 0.f, 5.f});
-		// 斜め: y軸まわりに約0.9radピッチさせ、法線の多くがビーム方向からずれるようにする
 		const SE3 tilted_pose =
 			SE3{math::quaternion::ypr(Vec3{0.f, 0.9f, 0.f}), Vec3{0.f, 0.f, 5.f}};
 
@@ -857,13 +803,10 @@ TEST_SUITE("normal_known_icp.hpp") {
 		const float ratio_straight = trace_straight_1 / trace_straight_0;
 		const float ratio_tilted = trace_tilted_1 / trace_tilted_0;
 
-		// 正対時は sigma_angle を増やしてもあまり落ちず、斜め時は大きく落ちる。
 		CHECK(ratio_tilted < ratio_straight);
 	}
 
 	TEST_CASE("run_icp: ノイズモデルで遠い点の重みが落ちる(grazing)") {
-		// 大きく傾けた(grazingな)配置で、sigma_angleを0から正にすると
-		// information_matrixが小さくなること (1/r^2減衰のような回転消去は起きない)。
 		auto icp0 = make_icp(forward_rect(), 25);
 		auto icp1 = make_icp(forward_rect(), 25);
 
@@ -894,16 +837,12 @@ TEST_SUITE("normal_known_icp.hpp") {
 			trace1 += im1[i, i];
 		}
 		CHECK(trace1 < trace0);
-		// weight_sum自体も落ちていること
 		CHECK(icp1.weight_sum(0) < icp0.weight_sum(0));
 	}
 
 	TEST_CASE("run_icp: 【本命】Huberが外れ値に効く") {
-		// 正しい点群に、面から大きく飛び出た外れ値点を数点混ぜる。
-		// 同じ点群・同じシード・同じループ回数で、huber_k無指定/指定を比較する。
 		const SE3 true_pose = SE3::trans(Vec3{0.f, 0.f, 5.f});
 		auto points = sample_points(true_pose); // 25点、正しい点群
-		// 面から大きく(2m)飛び出した外れ値を3点混ぜる (u,v範囲内なので対応点にはなる)。
 		points.push_back(true_pose.app_v(Vec3{0.5f, 0.3f, 2.0f}));
 		points.push_back(true_pose.app_v(Vec3{-0.5f, -0.3f, 2.0f}));
 		points.push_back(true_pose.app_v(Vec3{0.0f, 0.6f, 2.0f}));
@@ -936,11 +875,8 @@ TEST_SUITE("normal_known_icp.hpp") {
 		const float err_z_no_huber = std::fabs(icp_no_huber.obj_pose(0).p.z() - true_pose.p.z());
 		const float err_z_huber = std::fabs(icp_huber.obj_pose(0).p.z() - true_pose.p.z());
 
-		// huber無指定 -> 外れ値に引っ張られ、真値から大きくずれる
 		CHECK(err_z_no_huber > 0.1f);
-		// huber指定 -> ずれが明確に小さくなる
 		CHECK(err_z_huber < 0.05f);
-		// 本命: Huberありの方が誤差が小さい
 		CHECK(err_z_huber < err_z_no_huber);
 	}
 
@@ -1026,10 +962,7 @@ TEST_SUITE("normal_known_icp.hpp") {
 			for (u8 j = i; j < 6; ++j) { CHECK(std::isfinite(im[i, j])); }
 	}
 
-	// --- accept_distance2_begin (coarse-to-fine) ---
 
-	// BoxInner (立方体、原点中心) の全6面から3x3グリッドでサンプルした点群を使う。
-	// forward_rect() の1枚の平面と違い6面あるので、6自由度すべてが観測できる。
 	inline auto box_hlens() -> Vec3 { return Vec3{2.f, 2.f, 2.f}; }
 
 	inline auto make_box_icp(const usize capacity) -> NormalKnownResource<BoxInner> {
@@ -1072,23 +1005,16 @@ TEST_SUITE("normal_known_icp.hpp") {
 	TEST_CASE(
 		"run_icp: 【本命】coarse-to-fineで同じmax_loop_numのまま収束半径が広がる(BoxInner)"
 	) {
-		// 1枚の平面は6自由度が決まらないので、6面あるBoxInnerを使う。
 		const SE3 true_pose = SE3::ide();
 		const auto points = sample_box_points(true_pose);
 		REQUIRE(points.size() == 54);
 
-		// シード: 全軸に一様な並進誤差(0.35m)を与える。BoxInnerは全壁が同じ量だけ
-		// 平行移動するので、どの面の点もシード姿勢に対する点対面距離がほぼ一様に
-		// 約0.35m (distance^2 ≈ 0.1225) になる。
 		const SE3 seed = SE3::trans(Vec3{0.35f, 0.35f, 0.35f});
 
 		const Vec6 tikhonov{0.001f, 0.001f, 0.001f, 0.001f, 0.001f, 0.001f};
 		constexpr u32 max_loop_num = 30;
 		constexpr float accept_distance2 = 0.04f; // 0.2m: シードの誤差(0.35m)より狭い
 		constexpr float accept_distance2_begin = 4.0f; // 2.0m: シードの誤差より十分広い
-		// 早期打ち切りを無効化し、両者が実際に同じ回数だけ回ったことを
-		// last_loop_count()で確認できるようにする。max_delta2は常に0以上なので、
-		// convergence_delta2に負の値を渡すと打ち切り条件が絶対に成立しなくなる。
 		constexpr float convergence_delta2 = -1.f;
 
 		auto icp_no_schedule = make_box_icp(points.size());
@@ -1116,41 +1042,26 @@ TEST_SUITE("normal_known_icp.hpp") {
 		REQUIRE(err_no_schedule == IcpError::none);
 		REQUIRE(err_scheduled == IcpError::none);
 
-		// 回数を増やして誤魔化していないこと: 両者とも同じmax_loop_num予算を
-		// 使い切っている(早期打ち切りを無効化しているので必ずmax_loop_numに達する)。
 		CHECK(icp_no_schedule.last_loop_count() == max_loop_num);
 		CHECK(icp_scheduled.last_loop_count() == max_loop_num);
 		CHECK(icp_no_schedule.last_loop_count() == icp_scheduled.last_loop_count());
 
-		// スケジュール無し: シードの誤差(0.35m)がいきなり狭いゲート(0.2m)を
-		// 超えるため対応が一切取れず、姿勢はシードのまま固着する
-		// (lio_localizationが単体検証で確認した固着そのもの)。
 		CHECK(icp_no_schedule.obj_status(0) == ObjStatus::too_few_correspondences);
 		CHECK(icp_no_schedule.correspondence_count(0) == 0);
 		CHECK(ApproxCheck{icp_no_schedule.obj_pose(0)} == ApproxCheck{seed});
 
-		// スケジュール有り: 広いゲートから始めるので対応が取れ、真値へ収束する。
 		CHECK(icp_scheduled.obj_status(0) == ObjStatus::updated);
 
 		const float err_no_schedule2 = vec::distance2(icp_no_schedule.obj_pose(0).p, true_pose.p);
 		const float err_scheduled2 = vec::distance2(icp_scheduled.obj_pose(0).p, true_pose.p);
 		CHECK(err_scheduled2 < 0.01f); // 並進誤差 < 10cm まで収束する
 
-		// 本命: 同じ点群・同じ初期姿勢・同じmax_loop_num・同じaccept_distance2で、
-		// スケジュール有りの方が誤差が明確に小さい(収束半径が広がったことの直接証拠)。
 		CHECK(err_scheduled2 < err_no_schedule2);
 	}
 
 	TEST_CASE("run_icp: 最終反復のゲートがaccept_distance2と厳密に一致する(境界の外れ点で間接確認)") {
-		// ゲートの値そのものは外から観測できないので、accept_distance2と
-		// accept_distance2_beginの間に収まる距離に外れ点を1つ置き、スケジュール
-		// 有り/無しで最終的なcorrespondence_countが一致することで間接的に確認する。
-		// もし最終反復のゲートがaccept_distance2に厳密に一致していなければ、
-		// スケジュール有りの方だけこの外れ点を対応点として拾ってしまい、
-		// correspondence_countがスケジュール無しとずれるはず。
 		const SE3 true_pose = SE3::trans(Vec3{0.f, 0.f, 5.f});
 		auto points = sample_points(true_pose); // 25点、すべて面上ぴったり
-		// 面から1.0m飛び出した外れ点 (narrow=0.2m と wide=2.0m のちょうど間)。
 		points.push_back(true_pose.app_v(Vec3{0.f, 0.f, 1.0f}));
 		REQUIRE(points.size() == 26);
 
@@ -1179,16 +1090,11 @@ TEST_SUITE("normal_known_icp.hpp") {
 		REQUIRE(err_no_schedule == IcpError::none);
 		REQUIRE(err_scheduled == IcpError::none);
 
-		// 外れ点はnarrowゲート(0.2m)を超えるので、最終反復のゲートが
-		// accept_distance2に厳密に一致していれば両者とも25点(外れ点は含まない)。
 		CHECK(icp_no_schedule.correspondence_count(0) == 25);
 		CHECK(icp_scheduled.correspondence_count(0) == icp_no_schedule.correspondence_count(0));
 	}
 
 	TEST_CASE("run_icp: スケジュール有効でも最終反復のゲートはaccept_distance2と厳密に一致する") {
-		// 等比で掛け続けた積算値は浮動小数点誤差で accept_distance2 から
-		// ずれるので、最終反復だけは呼び出し側の指定値を厳密に使っている、
-		// ということを last_accept_distance2() で直接確認する。
 		auto icp = make_icp(forward_rect(), 25);
 		const auto points = sample_points(SE3::trans(Vec3{0.f, 0.f, 5.f}));
 		icp.obj_pose(0) = SE3::trans(Vec3{0.f, 0.f, 4.9f});
@@ -1205,7 +1111,6 @@ TEST_SUITE("normal_known_icp.hpp") {
 		REQUIRE(icp.last_loop_count() == max_loop_num);
 		CHECK(icp.last_accept_distance2() == accept2);
 
-		// 積算値がそのまま使われていたら一致しないこと (テストが実効性を持つこと)
 		float acc = begin2;
 		const float ratio =
 			std::exp(std::log(accept2 / begin2) / static_cast<float>(max_loop_num - 1));
@@ -1218,9 +1123,6 @@ TEST_SUITE("normal_known_icp.hpp") {
 		const auto points = sample_points(SE3::trans(Vec3{0.f, 0.f, 5.f}));
 		icp.obj_pose(0) = SE3::trans(Vec3{0.f, 0.f, 4.5f});
 
-		// accept_distance2_begin(200) > accept_distance2(100)で正当な値だが、
-		// max_loop_num=1なのでスケジュールは無効化され、accept_distance2がそのまま
-		// 使われる(壊れない: ゼロ除算や不正なlog評価が起きない)。
 		const auto err =
 			icp.run_icp(std::span{points}, Vec6{}, 1, 100.f, 0.f, IcpWeighting{}, 200.f);
 
@@ -1290,8 +1192,6 @@ TEST_SUITE("normal_known_icp.hpp") {
 	}
 
 	TEST_CASE("run_icp: スケジュール有効時はconvergence_delta2を非常に大きくしてもmax_loop_numまで回る") {
-		// スケジュールが有効だと、早期打ち切り判定は「現在のゲートがaccept_distance2に
-		// 到達している反復(=最終反復)」でしか行われないため、実質的に無効になる。
 		auto icp = make_icp(forward_rect(), 25);
 		const auto points = sample_points(SE3::trans(Vec3{0.f, 0.f, 5.f}));
 		icp.obj_pose(0) = SE3::trans(Vec3{0.f, 0.f, 4.5f});

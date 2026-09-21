@@ -22,26 +22,19 @@ namespace sotoba::icp_resource::resource_impl {
 	/// run_icp の呼び出し自体の成否。
 	enum class IcpError : u8 {
 		none = 0,
-		/// point_cloud.size() が確保済みバッファ容量 (points_capacity()) を超えている。
-		/// バッファの再確保はしない。呼び出しは何も行わず、姿勢も状態も変化しない。
+		/// 点数が points_capacity() を超えている。再確保はしない。
 		too_many_points,
-		/// weighting に不正な値 (負の σ、0 以下の huber_k、非有限値) が指定された。
-		/// 呼び出しは何も行わず、姿勢も状態も変化しない。
 		invalid_weighting,
-		/// accept_distance2_begin が不正 (非有限、または accept_distance2 より小さい)。
-		/// 呼び出しは何も行わず、姿勢も状態も変化しない。
 		invalid_accept_schedule,
 	};
 
 	/// オブジェクトごとの、直近の run_icp における姿勢更新の結果。
 	enum class ObjStatus : u8 {
-		/// まだ一度も run_icp が走っていない。
 		not_run = 0,
-		/// 姿勢が更新された。
 		updated,
-		/// 対応点が min_correspondences 未満で、姿勢は run_icp 呼び出し時の値のまま。
+		/// 姿勢は run_icp 呼び出し時の値のまま。
 		too_few_correspondences,
-		/// 線形方程式 (コレスキー分解) が解けず、姿勢は直前の値のまま。
+		/// 姿勢は直前の値のまま。
 		solve_failed,
 	};
 
