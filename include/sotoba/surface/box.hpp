@@ -305,7 +305,16 @@ namespace sotoba::surface {
 
 	#include <doctest.h>
 
+	// BoxInner が ICP の囲いとして機能することのテスト(本命)でのみ使う。
+	// normal_known_icp.hpp 自身のテストコードが surface::Rectangle に依存しており
+	// 自己完結していないため、box.hpp がこの2ファイルの中で最初に
+	// normal_known_icp.hpp を include する場合に備え、先に rectangle.hpp を
+	// include して Rectangle を宣言しておく (rectangle.hpp の実装/テストは変更しない)。
+	#include "sotoba/surface/rectangle.hpp"
+	#include "sotoba/icp_resource/normal_known_icp.hpp"
+
 TEST_SUITE("box.hpp") {
+	using sotoba::surface::box_impl::BoxInner;
 	using sotoba::surface::box_impl::BoxOuter;
 	using namespace sotoba::math;
 
@@ -456,6 +465,242 @@ TEST_SUITE("box.hpp") {
 			const auto res = zero_box.ray_collision(ray_parallel);
 
 			CHECK(res == std::numeric_limits<float>::infinity());
+		}
+	}
+
+	TEST_CASE("BoxInner") {
+		// 基本設定: 原点中心、回転なし、hlens=(2,3,1)。
+		// センサ原点(0,0,0)はこの内部にあり、全ての面が可視になる。
+		const Vec3 center{0.0f, 0.0f, 0.0f};
+		const SquareMat<3> rot = SquareMat<3>::ide();
+		const Vec3 hlens{2.0f, 3.0f, 1.0f};
+		BoxInner box{center, rot, hlens};
+
+		SUBCASE("closest_pd: 原点が内部にあるとき全ての面が可視(BoxOuterはinf、BoxInnerは有限)") {
+			BoxOuter outer_box{center, rot, hlens};
+			const Vec3 p{10.0f, 0.0f, 0.0f};
+
+			const auto outer_res = outer_box.closest_pd(p);
+			CHECK(outer_res.w() == std::numeric_limits<float>::infinity());
+
+			const auto inner_res = box.closest_pd(p);
+			CHECK(inner_res.w() != std::numeric_limits<float>::infinity());
+			// +x面(x=2)が最近接。距離の二乗 = (2-10)^2 = 64
+			const Vec4 expected{2.0f, 0.0f, 0.0f, 64.0f};
+			CHECK(ApproxCheck{inner_res} == ApproxCheck{expected});
+		}
+
+		SUBCASE("closest_pd: 最近接点が手計算と一致する(同じ軸の両側が正しく選ばれる)") {
+			// x軸: if/elseにすると+x側が永久に選ばれなくなるバグを検出する
+			{
+				const auto res = box.closest_pd(Vec3{1.5f, 0.0f, 0.0f});
+				const Vec4 expected{2.0f, 0.0f, 0.0f, 0.25f}; // +x面(x=2)
+				CHECK(ApproxCheck{res} == ApproxCheck{expected});
+			}
+			{
+				const auto res = box.closest_pd(Vec3{-1.5f, 0.0f, 0.0f});
+				const Vec4 expected{-2.0f, 0.0f, 0.0f, 0.25f}; // -x面(x=-2)
+				CHECK(ApproxCheck{res} == ApproxCheck{expected});
+			}
+			// y軸
+			{
+				const auto res = box.closest_pd(Vec3{0.0f, 2.5f, 0.0f});
+				const Vec4 expected{0.0f, 3.0f, 0.0f, 0.25f}; // +y面(y=3)
+				CHECK(ApproxCheck{res} == ApproxCheck{expected});
+			}
+			{
+				const auto res = box.closest_pd(Vec3{0.0f, -2.5f, 0.0f});
+				const Vec4 expected{0.0f, -3.0f, 0.0f, 0.25f}; // -y面(y=-3)
+				CHECK(ApproxCheck{res} == ApproxCheck{expected});
+			}
+			// z軸
+			{
+				const auto res = box.closest_pd(Vec3{0.0f, 0.0f, 0.8f});
+				const Vec4 expected{0.0f, 0.0f, 1.0f, 0.04f}; // +z面(z=1)
+				CHECK(ApproxCheck{res} == ApproxCheck{expected});
+			}
+			{
+				const auto res = box.closest_pd(Vec3{0.0f, 0.0f, -0.8f});
+				const Vec4 expected{0.0f, 0.0f, -1.0f, 0.04f}; // -z面(z=-1)
+				CHECK(ApproxCheck{res} == ApproxCheck{expected});
+			}
+		}
+
+		SUBCASE("closest_pdn: 法線が内向き") {
+			// +x面上の最近接点に対する法線は(-1,0,0) (原点方向を向く=内向き)
+			{
+				const auto [res, norm] = box.closest_pdn(Vec3{1.5f, 0.0f, 0.0f});
+				const Vec4 expected{2.0f, 0.0f, 0.0f, 0.25f};
+				CHECK(ApproxCheck{res} == ApproxCheck{expected});
+				CHECK(ApproxCheck{Vec3(norm)} == ApproxCheck{Vec3{-1.0f, 0.0f, 0.0f}});
+			}
+			// -x面なら法線は(+1,0,0)
+			{
+				const auto [res, norm] = box.closest_pdn(Vec3{-1.5f, 0.0f, 0.0f});
+				const Vec4 expected{-2.0f, 0.0f, 0.0f, 0.25f};
+				CHECK(ApproxCheck{res} == ApproxCheck{expected});
+				CHECK(ApproxCheck{Vec3(norm)} == ApproxCheck{Vec3{1.0f, 0.0f, 0.0f}});
+			}
+		}
+
+		SUBCASE("wall_existで面を消せる") {
+			// +x面(ビット1)を無効化。p=(1.5,0,0)の最近接点は+x面ではなくz面になる。
+			const std::array<bool, 6> wall_not_exist{false, true, false, false, false, false};
+			BoxInner box_no_plus_x{center, rot, hlens, wall_not_exist};
+
+			const auto res = box_no_plus_x.closest_pd(Vec3{1.5f, 0.0f, 0.0f});
+			// +x面(距離0)ではなく-z面(距離1)が選ばれる
+			const Vec4 expected{1.5f, 0.0f, -1.0f, 1.0f};
+			CHECK(ApproxCheck{res} == ApproxCheck{expected});
+		}
+
+		SUBCASE("原点が外側にある軸では、その側の面が見えない") {
+			// centerを(-5,0,0)にずらし、原点(0,0,0)がボックスの+x側の外に出るようにする。
+			// ボックスのローカルx範囲は[-7,-3]。原点はそれより+x側にある。
+			BoxInner outside_box{Vec3{-5.0f, 0.0f, 0.0f}, rot, hlens};
+
+			// +x面(ワールドx=-3)ちょうど上の点。+x面が可視なら距離0のはずだが、
+			// 不可視なのでz面(距離1)が選ばれる。
+			const auto res_plus = outside_box.closest_pd(Vec3{-3.0f, 0.0f, 0.0f});
+			const Vec4 expected_plus{-3.0f, 0.0f, -1.0f, 1.0f};
+			CHECK(ApproxCheck{res_plus} == ApproxCheck{expected_plus});
+
+			// -x面(ワールドx=-7)は依然として可視。ちょうど上の点なら距離0で選ばれる。
+			const auto res_minus = outside_box.closest_pd(Vec3{-7.0f, 0.0f, 0.0f});
+			const Vec4 expected_minus{-7.0f, 0.0f, 0.0f, 0.0f};
+			CHECK(ApproxCheck{res_minus} == ApproxCheck{expected_minus});
+		}
+
+		SUBCASE("apply_se3: 座標変換") {
+			// +X方向に2移動し、Z軸回りに90度回転させる変換
+			const Vec3 se3_center{0.0f, 0.0f, 5.0f};
+			const Vec3 se3_hlens{1.0f, 1.0f, 1.0f};
+			BoxInner se3_box{se3_center, rot, se3_hlens};
+
+			const UQuaternion rot_z90 = quaternion::ypr({0.f, 0.f, std::numbers::pi_v<float> / 2});
+			const Vec3 trans{2.0f, 0.0f, 0.0f};
+			SE3 pose{rot_z90, trans};
+
+			se3_box.apply_se3(pose);
+
+			// 中心位置: (0,0,5) -> rot -> (0,0,5) -> + trans(2,0,0) -> (2,0,5)
+			const Vec3 expected_center = pose.app_v(Vec3{0.0f, 0.0f, 5.0f});
+			CHECK(ApproxCheck{se3_box.center} == ApproxCheck{expected_center});
+
+			// 回転の確認: X軸(1,0,0)だったものがY軸(0,1,0)になっているか
+			const Vec3 new_axis_x = se3_box.rot[0];
+			CHECK(ApproxCheck{new_axis_x} == ApproxCheck{Vec3{0.0f, 1.0f, 0.0f}});
+		}
+
+		SUBCASE("ray_collision: t_exitを返す") {
+			// 中心を(0.5,0,0)にずらした非対称な配置。
+			// BoxOuterなら(負の)t_enterを使うためinfになるが、BoxInnerはt_exitを使うので
+			// 有限の値が返るはずで、その値はBoxOuterの結果と明確に異なる。
+			const Vec3 asym_center{0.5f, 0.0f, 0.0f};
+			BoxInner asym_box{asym_center, rot, hlens};
+			BoxOuter asym_outer_box{asym_center, rot, hlens};
+
+			const UVec3 ray_plus_x{1.0f, 0.0f, 0.0f};
+
+			// BoxOuter: 原点が内部にあるのでt_enter<=0となりinfになる
+			const auto outer_res = asym_outer_box.ray_collision(ray_plus_x);
+			CHECK(outer_res == std::numeric_limits<float>::infinity());
+
+			// BoxInner: +x面(ローカルx=2, ワールドx=2.5)に当たるt_exitを使う。
+			// co_local.x = -0.5 なので t_exit = hlens.x - co_local.x = 2 - (-0.5) = 2.5。
+			// 返り値は距離の二乗 = 2.5^2 = 6.25。
+			const auto hit_res = asym_box.ray_collision(ray_plus_x);
+			CHECK(hit_res == doctest::Approx(6.25f));
+
+			SUBCASE("出ていく面をwall_existで消すと無限大が返る") {
+				const std::array<bool, 6> wall_not_exist{false, true, false, false, false, false};
+				BoxInner asym_box_no_exit{asym_center, rot, hlens, wall_not_exist};
+				const auto res = asym_box_no_exit.ray_collision(ray_plus_x);
+				CHECK(res == std::numeric_limits<float>::infinity());
+			}
+		}
+
+		SUBCASE("【本命】BoxInner 1個だけでICPの囲いとして機能する") {
+			using sotoba::ObjId;
+			using sotoba::ObjSurfId;
+			using sotoba::osid_pack;
+			using sotoba::SurfId;
+			using sotoba::icp_resource::IcpError;
+			using sotoba::icp_resource::NormalKnownResource;
+			using sotoba::icp_resource::ObjStatus;
+
+			// マップ座標系での囲い(全壁面あり)。ローカル原点を中心に置く。
+			const BoxInner local_box{Vec3{0.0f, 0.0f, 0.0f}, SquareMat<3>::ide(), hlens};
+
+			// 壁面上の点を6面からサンプル (各面 3x3 = 54点。複数面からサンプルすることで
+			// 6自由度すべてが決まる)。
+			std::vector<Vec3> local_pts;
+			for (int axis = 0; axis < 3; ++axis) {
+				const int j = (axis + 1) % 3;
+				const int k = (axis + 2) % 3;
+				for (const float sign : {-1.0f, 1.0f}) {
+					for (const float fj : {-0.6f, 0.0f, 0.6f}) {
+						for (const float fk : {-0.6f, 0.0f, 0.6f}) {
+							Vec3 local{};
+							local[axis] = sign * hlens[axis];
+							local[j] = fj * hlens[j];
+							local[k] = fk * hlens[k];
+							local_pts.push_back(local);
+						}
+					}
+				}
+			}
+			REQUIRE(local_pts.size() == 54);
+
+			// マップ座標系の形状をセンサ座標系へ写す変換。原点(0,0,0)が
+			// 変換後もボックス内部に残るよう、並進はhlensに対して十分小さくする。
+			const Vec3 true_ypr{0.2f, 0.15f, 0.1f};
+			const Vec3 true_trans{0.3f, -0.2f, 0.1f};
+			const SE3 true_pose{quaternion::ypr(true_ypr), true_trans};
+
+			std::vector<Vec3> points;
+			points.reserve(local_pts.size());
+			for (const auto& lp : local_pts) points.push_back(true_pose.app_v(lp));
+
+			// シード: 正解からhlensに対して1割程度ずらす
+			const Vec3 seed_ypr = true_ypr + Vec3{0.08f, -0.06f, 0.05f};
+			const Vec3 seed_trans = true_trans + Vec3{0.15f, -0.1f, 0.08f};
+			const SE3 seed{quaternion::ypr(seed_ypr), seed_trans};
+
+			std::array<std::vector<ObjSurfId>, 1> osids{
+				std::vector<ObjSurfId>{osid_pack(ObjId(0), SurfId(0))}
+			};
+			NormalKnownResource<BoxInner> icp{
+				std::tuple{std::vector<BoxInner>{local_box}},
+				std::move(osids),
+				1,
+				points.size()
+			};
+			icp.obj_pose(0) = seed;
+
+			const Vec6 tikhonov{0.001f, 0.001f, 0.001f, 0.001f, 0.001f, 0.001f};
+			const auto err = icp.run_icp(std::span{points}, tikhonov, 50, 100.f);
+
+			CHECK(err == IcpError::none);
+			CHECK(icp.obj_status(0) == ObjStatus::updated);
+
+			// 姿勢誤差: 並進は真値とのユークリッド距離の二乗、回転は相対クォータニオンの
+			// ベクトル部のノルムの二乗(小角近似でsin^2(theta/2)相当)。
+			auto trans_err2 = [&](const SE3& p) { return vec::distance2(p.p, true_pose.p); };
+			auto rot_err2 = [&](const SE3& p) {
+				const SE3 diff = p * true_pose.inv();
+				return vec::dot(diff.uq.v.xyz(), diff.uq.v.xyz());
+			};
+
+			const float seed_trans_err2 = trans_err2(seed);
+			const float seed_rot_err2 = rot_err2(seed);
+			const float result_trans_err2 = trans_err2(icp.obj_pose(0));
+			const float result_rot_err2 = rot_err2(icp.obj_pose(0));
+
+			CHECK(result_trans_err2 < seed_trans_err2);
+			CHECK(result_rot_err2 < seed_rot_err2);
+			CHECK(result_trans_err2 < 0.0025f); // 並進誤差 < 5cm
+			CHECK(result_rot_err2 < 0.0025f); // 回転誤差 < 約5.7度相当
 		}
 	}
 }
