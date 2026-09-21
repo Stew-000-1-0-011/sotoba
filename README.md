@@ -7,7 +7,8 @@
 Point-to-PlaneのICPを実装。
 
 ## 使い方
-まだfind_packageできるようにはなってない。
+`find_package(sotoba)` で外部プロジェクトから使える (実例は tests/package_test を参照)。
+このリポジトリ自体をビルド・テストする場合は以下の手順で。
 ```
 # 予め、clang-format-20などが入っているか確認してね
 
