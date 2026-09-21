@@ -433,6 +433,19 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 				  NormalKnownResource<ExplanationOnlySurface<0>, ExplanationOnlySurface<1>>,
 				  ExplanationOnlySurface<0>,
 				  ExplanationOnlySurface<1>>);
+	// 面の種類が2つ以外でも成立すること (icp_resource concept が種類数を
+	// ハードコードしていないことの担保)。
+	static_assert(icp_resource::icp_resource<
+				  NormalKnownResource<ExplanationOnlySurface<0>>,
+				  ExplanationOnlySurface<0>>);
+	static_assert(icp_resource::icp_resource<
+				  NormalKnownResource<
+					  ExplanationOnlySurface<0>,
+					  ExplanationOnlySurface<1>,
+					  ExplanationOnlySurface<2>>,
+				  ExplanationOnlySurface<0>,
+				  ExplanationOnlySurface<1>,
+				  ExplanationOnlySurface<2>>);
 } // namespace sotoba::icp_resource::normal_known_icp_impl
 
 namespace sotoba::icp_resource {

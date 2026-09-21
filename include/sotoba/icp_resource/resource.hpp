@@ -47,7 +47,7 @@ namespace sotoba::icp_resource::resource_impl {
 		&& requires(T_ mut,
 					const T_ imut,
 					std::tuple<std::vector<Ss_>...> surfs,
-					std::array<std::vector<ObjSurfId>, 2> osids,
+					std::array<std::vector<ObjSurfId>, sizeof...(Ss_)> osids,
 					u8 obj_num,
 					usize points_num,
 					u8 oid) {
