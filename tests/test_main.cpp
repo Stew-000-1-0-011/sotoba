@@ -10,4 +10,3 @@
 #include "sotoba/surface/rectangle.hpp"
 
 #include "sotoba/icp_resource/normal_known_icp.hpp"
-#include "sotoba/icp_resource/svd_icp.hpp"

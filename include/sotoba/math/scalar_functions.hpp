@@ -6,6 +6,25 @@
 
 #include "sotoba/stdtypes.hpp"
 
+
+namespace sotoba::math {
+	inline constexpr auto fast_invsqrt(const float x) noexcept -> float {
+		static_assert(
+			sizeof(float) == sizeof(i32),
+			"float must be 32 bits (IEEE 754 single precision)"
+		);
+
+		const float xhalf = 0.5f * x;
+		i32 i = std::bit_cast<i32>(x);
+		i = 0x5F3759DF - (i >> 1);
+		float y = std::bit_cast<float>(i);
+		y = y * (1.5f - (xhalf * y * y));
+		y = y * (1.5f - (xhalf * y * y));
+
+		return y;
+	}
+
+	inline constexpr auto clamp(const float x, const float mi, const float ma) noexcept -> float {
 		return std::clamp(x, mi, ma);
 	}
 
