@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+#include <optional>
 #include <span>
 #include <tuple>
 #include <utility>
@@ -38,6 +40,26 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 	using icp_resource::IcpError;
 	using icp_resource::ObjStatus;
 
+	/// LiDAR の点ごとの誤差モデル。
+	/// 点対面残差の分散を σ_r² cos² + r² σ_θ² (1 - cos²) で見積もる。
+	struct NoiseModel final {
+		/// ビーム方向(距離方向)のノイズ標準偏差 [m]。
+		float sigma_range;
+		/// 角度ノイズ標準偏差 [rad]。横方向の位置誤差は r * sigma_angle になる。
+		float sigma_angle;
+	};
+
+	/// run_icp の重み付け設定。既定 (両方とも無指定) では全点の重みが 1 になり、
+	/// 重み付けを入れる前と完全に同一の挙動になる。
+	struct IcpWeighting final {
+		/// 無指定なら全点の重みを 1 とする (ノイズモデルによる重み付けを行わない)。
+		std::optional<NoiseModel> noise{};
+		/// Huber カーネルの閾値 k (正規化残差に対する)。無指定ならロバスト化しない。
+		/// noise が無指定の場合、正規化残差は生の残差 [m] そのものになるので、
+		/// k の単位も [m] になる点に注意。
+		std::optional<float> huber_k{};
+	};
+
 	template <surfacelike... Surfaces_>
 	struct NormalKnownResource final {
 		// 表面とその情報、座標変換後の表面のバッファ
@@ -55,6 +77,8 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 		std::vector<SymMat<3>> a_t;
 		std::vector<SquareMat<3>> a_wt;
 		std::vector<usize> counts;
+		// 直近の run_icp における、オブジェクトごとの重みの総和 Σ w_i
+		std::vector<float> weight_sums;
 
 		// ここに入れた姿勢をもとに、ICPがはしり、補正された結果がここに入る
 		std::vector<SE3> obj_poses;
@@ -81,6 +105,7 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 			, a_t{}
 			, a_wt{}
 			, counts{}
+			, weight_sums{}
 			, obj_poses{}
 			, obj_statuses{}
 			, loop_count{0}
@@ -98,6 +123,7 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 			this->a_t.resize(obj_num);
 			this->a_wt.resize(obj_num);
 			this->counts.resize(obj_num);
+			this->weight_sums.resize(obj_num, 0.f);
 			this->obj_poses.resize(obj_num, SE3::ide());
 			this->obj_statuses.resize(obj_num, ObjStatus::not_run);
 		}
@@ -121,6 +147,13 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 			return this->counts[oid];
 		}
 
+		/// 直近の run_icp における、このオブジェクトの重みの総和 Σ w_i。
+		/// 重み付けが無効なときは対応点数と一致する。
+		/// information_matrix() を正規化したい場合の分母になる。
+		auto weight_sum(const u8 oid) const noexcept -> float {
+			return this->weight_sums[oid];
+		}
+
 		// 直近の run_icp で実際に回ったループ回数 (常に max_loop_num 以下)
 		auto last_loop_count() const noexcept -> u32 {
 			return this->loop_count;
@@ -130,9 +163,16 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 		/// A = Σ JᵀNJ (情報行列)。添字 0..2 が回転 w、3..5 が並進 t。
 		///
 		/// 対応点数での正規化も tikhonov 正則化も加えていない **生の総和**。
-		/// Σ/N が欲しければ correspondence_count(oid) で割ること。
-		/// 共分散は Cov ≒ σ² A⁻¹ で得られる (σ² はセンサの距離ノイズ分散で、
-		/// 呼び出し側が与える)。tikhonov を含めないのは、正則化が入ると
+		/// Σ/N が欲しければ correspondence_count(oid) で割ること
+		/// (weighting.noise を与えた場合は weight_sum(oid) で割ること)。
+		///
+		/// weighting.noise を与えなかった場合、各点の寄与は無重み (w=1) の
+		/// ままなので従来どおり素の総和であり、共分散は Cov ≒ σ² A⁻¹ として
+		/// σ² (センサの距離ノイズ分散) を呼び出し側が与える必要がある。
+		/// weighting.noise を与えた場合、各点の寄与にはすでに 1/σ_i² が
+		/// 重みとして掛かっているため、A はそのまま **真の情報行列** になり、
+		/// Cov ≒ A⁻¹ がそのまま使える (呼び出し側が別途 σ² を与える必要はない)。
+		/// tikhonov を含めないのは、正則化が入ると
 		/// 縮退方向で不確かさを過小評価してしまうため。
 		///
 		/// 値は最後に回ったイテレーションのもの。last_loop_count() == 0 のとき
@@ -182,14 +222,39 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 		/// residual_vector() で取得できる。どちらも対応点数での正規化や
 		/// tikhonov 正則化を加える前の生の総和であり、ObjStatus によらず
 		/// 最後に回ったイテレーションの値になる。
+		///
+		/// weighting は点ごとの重み付けの設定。既定の `IcpWeighting{}`
+		/// (noise, huber_k とも無指定) では全点の重みが厳密に 1 になり、
+		/// 重み付けを導入する前と完全に同一の挙動・数値結果になる。
+		/// weighting.noise を与えると、点対面残差の分散を
+		/// σ_r²cos² + r²σ_θ²(1-cos²) で見積もり、その逆数を重みとして使う
+		/// (センサ距離に比例して大きくなる横方向誤差を考慮したノイズモデル)。
+		/// weighting.huber_k を与えると、正規化残差 e/σ に対して Huber の
+		/// IRLS 重みをさらに掛け、外れ値(動物体・誤対応など)の影響を抑える。
+		/// weighting が不正な値 (負の σ、0 以下の huber_k、非有限値) の場合は
+		/// IcpError::invalid_weighting を返す。このとき呼び出しは何も行わず、
+		/// 姿勢も状態も変化しない。
 		auto run_icp(
 			std::span<const Vec3> point_cloud,
 			const Vec6& tikhonov,
 			const u32 max_loop_num,
 			const float accept_distance2,
-			const float convergence_delta2 = 0.f
+			const float convergence_delta2 = 0.f,
+			const IcpWeighting& weighting = {}
 		) noexcept -> IcpError {
 			if (point_cloud.size() > this->qs.size()) return IcpError::too_many_points;
+
+			if (weighting.noise) {
+				const auto& noise = *weighting.noise;
+				if (!(noise.sigma_range >= 0.f) || !math::isfinite(noise.sigma_range))
+					return IcpError::invalid_weighting;
+				if (!(noise.sigma_angle >= 0.f) || !math::isfinite(noise.sigma_angle))
+					return IcpError::invalid_weighting;
+			}
+			if (weighting.huber_k) {
+				const float k = *weighting.huber_k;
+				if (!(k > 0.f) || !math::isfinite(k)) return IcpError::invalid_weighting;
+			}
 
 			const auto tikhonov_w = vec::split<0, 3>(tikhonov);
 			const auto tikhonov_t = vec::split<3, 6>(tikhonov);
@@ -257,6 +322,7 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 					this->a_t[iobj] = SymMat<3>{};
 					this->a_wt[iobj] = SquareMat<3>{};
 					this->counts[iobj] = 0;
+					this->weight_sums[iobj] = 0.f;
 				}
 				for (usize ip = 0; ip < point_cloud.size(); ++ip) {
 					const auto [qdn, osid] = this->qs[ip];
@@ -272,12 +338,33 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 					const float err_n = vec::dot((p - q), n);
 					const Vec3 p_c = vec::cross(p, n);
 
+					// --- 点ごとの重み ---
+					float w = 1.f;
+					float sigma2 = 1.f; // 正規化残差を作るための分散 (noise 無指定なら 1)
+					if (weighting.noise) {
+						const float r2 = vec::dot(p, p);
+						const float np = vec::dot(n, p); // |n| = 1 なので cos² = np²/r²
+						const float cos2 = (r2 > float(math::epsilon)) ? (np * np / r2) : 1.f;
+						const float sr2 = math::pow2(weighting.noise->sigma_range);
+						const float st2 = math::pow2(weighting.noise->sigma_angle);
+						// 0除算を避けるための純粋な数値ガード (モデル上の意味は無い)
+						sigma2 =
+							std::max(sr2 * cos2 + r2 * st2 * (1.f - cos2), float(math::epsilon));
+						w = 1.f / sigma2;
+					}
+					if (weighting.huber_k) {
+						const float k = *weighting.huber_k;
+						const float s2 = math::pow2(err_n) / sigma2; // 正規化残差の二乗
+						if (math::pow2(k) < s2) { w *= k / math::sqrt(s2); }
+					}
+
 					const u8 iobj = std::to_underlying(osid_depack(osid).first);
-					this->b[iobj] += Vec6{err_n * p_c, err_n * n};
-					this->a_w[iobj] += vec::self_dyad(p_c);
-					this->a_t[iobj] += vec::self_dyad(n);
-					this->a_wt[iobj] += vec::dyad(p_c, n);
+					this->b[iobj] += w * Vec6{err_n * p_c, err_n * n};
+					this->a_w[iobj] += w * vec::self_dyad(p_c);
+					this->a_t[iobj] += w * vec::self_dyad(n);
+					this->a_wt[iobj] += w * vec::dyad(p_c, n);
 					this->counts[iobj]++;
+					this->weight_sums[iobj] += w;
 				}
 				float max_delta2 = 0.f;
 				for (u8 iobj = 0; iobj < this->obj_num; ++iobj) {
@@ -290,7 +377,7 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 					// a_w / a_t / a_wt / b は生の総和 (Σ) のまま残し、
 					// information_matrix() / residual_vector() から素の情報行列を
 					// 取れるようにする。
-					const float n = static_cast<float>(this->counts[iobj]);
+					const float n = this->weight_sums[iobj];
 
 					// コレスキー分解、w, tを求める
 					using Matrix6f = Eigen::Matrix<float, 6, 6>;
@@ -349,6 +436,8 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 } // namespace sotoba::icp_resource::normal_known_icp_impl
 
 namespace sotoba::icp_resource {
+	using normal_known_icp_impl::IcpWeighting;
+	using normal_known_icp_impl::NoiseModel;
 	using normal_known_icp_impl::NormalKnownResource;
 }
 
@@ -373,6 +462,8 @@ TEST_SUITE("normal_known_icp.hpp") {
 	namespace vec = math::vec;
 	using surface::Rectangle;
 	using icp_resource::IcpError;
+	using icp_resource::IcpWeighting;
+	using icp_resource::NoiseModel;
 	using icp_resource::NormalKnownResource;
 	using icp_resource::ObjStatus;
 	using math::ApproxCheck;
@@ -659,6 +750,232 @@ TEST_SUITE("normal_known_icp.hpp") {
 
 		const auto res = icp.residual_vector(0);
 		for (u8 i = 0; i < 6; ++i) { CHECK(res[i] == doctest::Approx(0.f).epsilon(1e-4)); }
+	}
+
+	// --- IcpWeighting ---
+
+	TEST_CASE("run_icp: 既定のIcpWeighting{}ではweight_sumが対応点数と厳密に一致する") {
+		auto icp = make_icp(forward_rect(), 25);
+		const SE3 true_pose = SE3::trans(Vec3{0.f, 0.f, 5.f});
+		const auto points = sample_points(true_pose);
+		icp.obj_pose(0) = SE3::trans(Vec3{0.05f, 0.f, 4.5f});
+
+		const Vec6 tikhonov{0.001f, 0.001f, 0.001f, 0.001f, 0.001f, 0.001f};
+		const auto err = icp.run_icp(std::span{points}, tikhonov, 1, 100.f);
+
+		REQUIRE(err == IcpError::none);
+		REQUIRE(icp.correspondence_count(0) == 25);
+		// 重み付け無効時は weight_sum が counts の厳密な float 表現になる
+		// (w が厳密に1.0fのまま積み上がるため)。
+		CHECK(icp.weight_sum(0) == float(icp.correspondence_count(0)));
+	}
+
+	TEST_CASE("run_icp: ノイズモデルが入射角で効く(正対 vs 斜め)") {
+		// 正対/傾いたそれぞれの配置で sigma_angle を 0 -> 大 にしたときの
+		// information_matrix (trace) の変化率を比べる。
+		// 正対(cos²≈1)ではほぼ変わらず、斜め(cos²が小さい点を含む)では大きく下がる方向。
+		auto trace_of = [](const Rectangle& rect, const SE3& true_pose, const float sigma_angle) {
+			auto icp = make_icp(rect, 25);
+			const auto points = sample_points(true_pose);
+			icp.obj_pose(0) = true_pose; // シードなしで完全一致 (残差0でも重みは効く)
+
+			const IcpWeighting weighting{
+				.noise = NoiseModel{.sigma_range = 0.05f, .sigma_angle = sigma_angle}
+			};
+			const auto err = icp.run_icp(std::span{points}, Vec6{}, 1, 100.f, 0.f, weighting);
+			REQUIRE(err == IcpError::none);
+			REQUIRE(icp.correspondence_count(0) >= 3);
+
+			const auto im = icp.information_matrix(0);
+			float trace = 0.f;
+			for (u8 i = 0; i < 6; ++i) trace += im[i, i];
+			return trace;
+		};
+
+		// 正対: forward_rect に真正面から (センサ~面の距離5m)
+		const SE3 straight_pose = SE3::trans(Vec3{0.f, 0.f, 5.f});
+		// 斜め: y軸まわりに約0.9radピッチさせ、法線の多くがビーム方向からずれるようにする
+		const SE3 tilted_pose =
+			SE3{math::quaternion::ypr(Vec3{0.f, 0.9f, 0.f}), Vec3{0.f, 0.f, 5.f}};
+
+		const float trace_straight_0 = trace_of(forward_rect(), straight_pose, 0.f);
+		const float trace_straight_1 = trace_of(forward_rect(), straight_pose, 0.5f);
+		const float trace_tilted_0 = trace_of(forward_rect(), tilted_pose, 0.f);
+		const float trace_tilted_1 = trace_of(forward_rect(), tilted_pose, 0.5f);
+
+		REQUIRE(trace_straight_0 > 0.f);
+		REQUIRE(trace_tilted_0 > 0.f);
+
+		const float ratio_straight = trace_straight_1 / trace_straight_0;
+		const float ratio_tilted = trace_tilted_1 / trace_tilted_0;
+
+		// 正対時は sigma_angle を増やしてもあまり落ちず、斜め時は大きく落ちる。
+		CHECK(ratio_tilted < ratio_straight);
+	}
+
+	TEST_CASE("run_icp: ノイズモデルで遠い点の重みが落ちる(grazing)") {
+		// 大きく傾けた(grazingな)配置で、sigma_angleを0から正にすると
+		// information_matrixが小さくなること (1/r^2減衰のような回転消去は起きない)。
+		auto icp0 = make_icp(forward_rect(), 25);
+		auto icp1 = make_icp(forward_rect(), 25);
+
+		const SE3 grazing_pose =
+			SE3{math::quaternion::ypr(Vec3{0.f, 1.0f, 0.f}), Vec3{0.f, 0.f, 5.f}};
+		const auto points = sample_points(grazing_pose);
+		icp0.obj_pose(0) = grazing_pose;
+		icp1.obj_pose(0) = grazing_pose;
+
+		const IcpWeighting weighting0{.noise = NoiseModel{.sigma_range = 0.05f, .sigma_angle = 0.f}
+		};
+		const IcpWeighting weighting1{
+			.noise = NoiseModel{.sigma_range = 0.05f, .sigma_angle = 0.3f}
+		};
+
+		const auto err0 = icp0.run_icp(std::span{points}, Vec6{}, 1, 100.f, 0.f, weighting0);
+		const auto err1 = icp1.run_icp(std::span{points}, Vec6{}, 1, 100.f, 0.f, weighting1);
+		REQUIRE(err0 == IcpError::none);
+		REQUIRE(err1 == IcpError::none);
+		REQUIRE(icp0.correspondence_count(0) >= 3);
+		REQUIRE(icp1.correspondence_count(0) >= 3);
+
+		const auto im0 = icp0.information_matrix(0);
+		const auto im1 = icp1.information_matrix(0);
+		float trace0 = 0.f, trace1 = 0.f;
+		for (u8 i = 0; i < 6; ++i) {
+			trace0 += im0[i, i];
+			trace1 += im1[i, i];
+		}
+		CHECK(trace1 < trace0);
+		// weight_sum自体も落ちていること
+		CHECK(icp1.weight_sum(0) < icp0.weight_sum(0));
+	}
+
+	TEST_CASE("run_icp: 【本命】Huberが外れ値に効く") {
+		// 正しい点群に、面から大きく飛び出た外れ値点を数点混ぜる。
+		// 同じ点群・同じシード・同じループ回数で、huber_k無指定/指定を比較する。
+		const SE3 true_pose = SE3::trans(Vec3{0.f, 0.f, 5.f});
+		auto points = sample_points(true_pose); // 25点、正しい点群
+		// 面から大きく(2m)飛び出した外れ値を3点混ぜる (u,v範囲内なので対応点にはなる)。
+		points.push_back(true_pose.app_v(Vec3{0.5f, 0.3f, 2.0f}));
+		points.push_back(true_pose.app_v(Vec3{-0.5f, -0.3f, 2.0f}));
+		points.push_back(true_pose.app_v(Vec3{0.0f, 0.6f, 2.0f}));
+		REQUIRE(points.size() == 28);
+
+		const SE3 seed = SE3::trans(Vec3{0.f, 0.f, 4.5f});
+		const Vec6 tikhonov{0.001f, 0.001f, 0.001f, 0.001f, 0.001f, 0.001f};
+		constexpr u32 max_loop_num = 30;
+
+		auto icp_no_huber = make_icp(forward_rect(), 28);
+		icp_no_huber.obj_pose(0) = seed;
+		const auto err_no_huber =
+			icp_no_huber.run_icp(std::span{points}, tikhonov, max_loop_num, 100.f);
+
+		auto icp_huber = make_icp(forward_rect(), 28);
+		icp_huber.obj_pose(0) = seed;
+		const IcpWeighting weighting{.huber_k = 0.1f};
+		const auto err_huber = icp_huber.run_icp(
+			std::span{points},
+			tikhonov,
+			max_loop_num,
+			100.f,
+			0.f,
+			weighting
+		);
+
+		REQUIRE(err_no_huber == IcpError::none);
+		REQUIRE(err_huber == IcpError::none);
+
+		const float err_z_no_huber = std::fabs(icp_no_huber.obj_pose(0).p.z() - true_pose.p.z());
+		const float err_z_huber = std::fabs(icp_huber.obj_pose(0).p.z() - true_pose.p.z());
+
+		// huber無指定 -> 外れ値に引っ張られ、真値から大きくずれる
+		CHECK(err_z_no_huber > 0.1f);
+		// huber指定 -> ずれが明確に小さくなる
+		CHECK(err_z_huber < 0.05f);
+		// 本命: Huberありの方が誤差が小さい
+		CHECK(err_z_huber < err_z_no_huber);
+	}
+
+	TEST_CASE("run_icp: weightingが不正ならinvalid_weightingが返り姿勢が不変") {
+		auto icp = make_icp(forward_rect(), 25);
+		const auto points = sample_points(SE3::trans(Vec3{0.f, 0.f, 5.f}));
+		const SE3 seed = SE3::trans(Vec3{0.f, 0.f, 4.5f});
+
+		SUBCASE("sigma_rangeが負") {
+			icp.obj_pose(0) = seed;
+			const IcpWeighting weighting{
+				.noise = NoiseModel{.sigma_range = -0.1f, .sigma_angle = 0.f}
+			};
+			const auto err = icp.run_icp(std::span{points}, Vec6{}, 5, 100.f, 0.f, weighting);
+			CHECK(err == IcpError::invalid_weighting);
+			CHECK(ApproxCheck{icp.obj_pose(0)} == ApproxCheck{seed});
+			CHECK(icp.obj_status(0) == ObjStatus::not_run);
+		}
+
+		SUBCASE("sigma_angleが負") {
+			icp.obj_pose(0) = seed;
+			const IcpWeighting weighting{
+				.noise = NoiseModel{.sigma_range = 0.f, .sigma_angle = -0.1f}
+			};
+			const auto err = icp.run_icp(std::span{points}, Vec6{}, 5, 100.f, 0.f, weighting);
+			CHECK(err == IcpError::invalid_weighting);
+			CHECK(ApproxCheck{icp.obj_pose(0)} == ApproxCheck{seed});
+		}
+
+		SUBCASE("huber_kが0") {
+			icp.obj_pose(0) = seed;
+			const IcpWeighting weighting{.huber_k = 0.f};
+			const auto err = icp.run_icp(std::span{points}, Vec6{}, 5, 100.f, 0.f, weighting);
+			CHECK(err == IcpError::invalid_weighting);
+			CHECK(ApproxCheck{icp.obj_pose(0)} == ApproxCheck{seed});
+		}
+
+		SUBCASE("huber_kが負") {
+			icp.obj_pose(0) = seed;
+			const IcpWeighting weighting{.huber_k = -1.f};
+			const auto err = icp.run_icp(std::span{points}, Vec6{}, 5, 100.f, 0.f, weighting);
+			CHECK(err == IcpError::invalid_weighting);
+			CHECK(ApproxCheck{icp.obj_pose(0)} == ApproxCheck{seed});
+		}
+
+		SUBCASE("sigma_rangeがNaN") {
+			icp.obj_pose(0) = seed;
+			const IcpWeighting weighting{
+				.noise =
+					NoiseModel{
+						.sigma_range = std::numeric_limits<float>::quiet_NaN(), .sigma_angle = 0.f
+					}
+			};
+			const auto err = icp.run_icp(std::span{points}, Vec6{}, 5, 100.f, 0.f, weighting);
+			CHECK(err == IcpError::invalid_weighting);
+			CHECK(ApproxCheck{icp.obj_pose(0)} == ApproxCheck{seed});
+		}
+
+		SUBCASE("huber_kがNaN") {
+			icp.obj_pose(0) = seed;
+			const IcpWeighting weighting{.huber_k = std::numeric_limits<float>::quiet_NaN()};
+			const auto err = icp.run_icp(std::span{points}, Vec6{}, 5, 100.f, 0.f, weighting);
+			CHECK(err == IcpError::invalid_weighting);
+			CHECK(ApproxCheck{icp.obj_pose(0)} == ApproxCheck{seed});
+		}
+	}
+
+	TEST_CASE("run_icp: sigma_range=0,sigma_angle=0でもNaN/infにならない(epsilonガード)") {
+		auto icp = make_icp(forward_rect(), 25);
+		const SE3 true_pose = SE3::trans(Vec3{0.f, 0.f, 5.f});
+		const auto points = sample_points(true_pose);
+		icp.obj_pose(0) = SE3::trans(Vec3{0.05f, 0.f, 4.5f});
+
+		const Vec6 tikhonov{0.001f, 0.001f, 0.001f, 0.001f, 0.001f, 0.001f};
+		const IcpWeighting weighting{.noise = NoiseModel{.sigma_range = 0.f, .sigma_angle = 0.f}};
+		const auto err = icp.run_icp(std::span{points}, tikhonov, 3, 100.f, 0.f, weighting);
+
+		CHECK(err == IcpError::none);
+		CHECK(vec::isfinite(icp.obj_pose(0).p));
+		CHECK(std::isfinite(icp.weight_sum(0)));
+		const auto im = icp.information_matrix(0);
+		for (u8 i = 0; i < 6; ++i)
+			for (u8 j = i; j < 6; ++j) { CHECK(std::isfinite(im[i, j])); }
 	}
 }
 
