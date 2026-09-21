@@ -31,11 +31,7 @@ using namespace math;
 constexpr float pi = std::numbers::pi;
 using namespace std::chrono_literals;
 
-#ifndef sotoba_USE_SYCL
 using Vec6 = Vec<6>;
-#else
-using Vec6 = Vec<8>;
-#endif
 
 int main() {
 	using Variant = std::variant<surface::BoxOuter, surface::Rectangle>;
@@ -167,7 +163,7 @@ int main() {
 	std::vector<Vec3> point_cloud(lidar.get_points_num());
 
 	// icp_resourceの作成
-	auto icp = icp_resource::to_resource<icp_resource::NormalKnownNonSyclResource>(
+	auto icp = icp_resource::to_resource<icp_resource::NormalKnownResource>(
 		lidar.get_points_num(),
 		std::span{objects}
 	);

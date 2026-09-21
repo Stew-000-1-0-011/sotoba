@@ -30,17 +30,13 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 	using math::Vec;
 	using math::Vec3;
 	using math::Vec4;
-#ifndef sotoba_USE_SYCL
 	using Vec6 = Vec<6>;
-#else
-	using Vec6 = Vec<8>;
-#endif
 	namespace vec = math::vec;
 	using surface::ExplanationOnlySurface;
 	using surface::surfacelike;
 
 	template <surfacelike... Surfaces_>
-	struct NormalKnownNonSyclResource final {
+	struct NormalKnownResource final {
 		// 表面とその情報、座標変換後の表面のバッファ
 		std::tuple<std::vector<Surfaces_>...> surfs;
 		std::tuple<std::vector<Surfaces_>...> moved_surfs;
@@ -62,7 +58,7 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 
 		u8 obj_num;
 
-		NormalKnownNonSyclResource(
+		NormalKnownResource(
 			std::tuple<std::vector<Surfaces_>...>&& surfs,
 			std::array<std::vector<ObjSurfId>, sizeof...(Surfaces_)>&& osids,
 			const u8 obj_num,
@@ -181,11 +177,7 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 					const Vec3 p_c = vec::cross(p, n);
 
 					const u8 iobj = std::to_underlying(osid_depack(osid).first);
-#ifndef sotoba_USE_SYCL
 					this->b[iobj] += Vec6{err_n * p_c, err_n * n};
-#else
-					this->b[iobj] += Vec6{err_n * p_c, err_n * n, 0.f, 0.f};
-#endif
 					this->a_w[iobj] += vec::self_dyad(p_c);
 					this->a_t[iobj] += vec::self_dyad(n);
 					this->a_wt[iobj] += vec::dyad(p_c, n);
@@ -233,13 +225,13 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 	};
 
 	static_assert(icp_resource::icp_resource<
-				  NormalKnownNonSyclResource<ExplanationOnlySurface<0>, ExplanationOnlySurface<1>>,
+				  NormalKnownResource<ExplanationOnlySurface<0>, ExplanationOnlySurface<1>>,
 				  ExplanationOnlySurface<0>,
 				  ExplanationOnlySurface<1>>);
 } // namespace sotoba::icp_resource::normal_known_icp_impl
 
 namespace sotoba::icp_resource {
-	using normal_known_icp_impl::NormalKnownNonSyclResource;
+	using normal_known_icp_impl::NormalKnownResource;
 }
 
 #ifdef sotoba_ENABLE_TESTING
