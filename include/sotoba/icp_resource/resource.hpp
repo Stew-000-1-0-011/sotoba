@@ -25,6 +25,9 @@ namespace sotoba::icp_resource::resource_impl {
 		/// point_cloud.size() が確保済みバッファ容量 (points_capacity()) を超えている。
 		/// バッファの再確保はしない。呼び出しは何も行わず、姿勢も状態も変化しない。
 		too_many_points,
+		/// weighting に不正な値 (負の σ、0 以下の huber_k、非有限値) が指定された。
+		/// 呼び出しは何も行わず、姿勢も状態も変化しない。
+		invalid_weighting,
 	};
 
 	/// オブジェクトごとの、直近の run_icp における姿勢更新の結果。
