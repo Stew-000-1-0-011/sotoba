@@ -1,9 +1,12 @@
 #include <chrono>
 #include <concepts>
+#include <cstdio>
+#include <iostream>
 #include <limits>
 #include <numbers>
 #include <print>
 #include <random>
+#include <span>
 #include <thread>
 #include <variant>
 
@@ -31,14 +34,10 @@ using namespace math;
 constexpr float pi = std::numbers::pi;
 using namespace std::chrono_literals;
 
-#ifndef sotoba_USE_SYCL
 using Vec6 = Vec<6>;
-#else
-using Vec6 = Vec<8>;
-#endif
 
 int main() {
-	using Variant = std::variant<surface::BoxOuter, surface::Rectangle>;
+	using Variant = std::variant<surface::BoxInner, surface::BoxOuter, surface::Rectangle>;
 
 	u32 loop_num = 10;
 	float accept_distance = 0.06;
@@ -53,15 +52,7 @@ int main() {
 	// オブジェクト作成
 	// データの実体グループ1: 静的な環境（壁や床など）
 	std::vector<Variant> environment_storage{};
-	environment_storage.reserve(2);
-
-	// // 1. BoxOuter: 原点にある正当な箱 (回転なし、全壁あり)
-	// environment_storage.emplace_back(surface::BoxOuter(
-	// 	Vec3{0.0f, 0.0f, 0.0f},  // center
-	// 	SquareMat<3>::ide(),  // rot
-	// 	Vec3{10.0f, 10.0f, 10.0f},   // hlens (ハーフサイズ)
-	// 	std::array<bool, 6>{false, false, false, false, false, false} // 全ての壁が存在
-	// ));
+	environment_storage.reserve(1);
 
 	// // 2. Rectangle: 床面 (Y = -5.0f, 上向き法線)
 	// environment_storage.emplace_back(surface::Rectangle(
@@ -73,51 +64,10 @@ int main() {
 
 	// 外側を囲う大きな囲い
 	environment_storage.emplace_back(
-		surface::Rectangle(
-			Vec3{0.f, 0.f, -2.f},
-			Vec4{1.f, 0.f, 0.f, 2.f},
-			Vec4{0.f, 1.f, 0.f, 2.f},
-			UVec3{0.f, 0.f, 1.f}
-		)
-	);
-	environment_storage.emplace_back(
-		surface::Rectangle(
-			Vec3{0.f, 0.f, 2.f},
-			Vec4{1.f, 0.f, 0.f, 2.f},
-			Vec4{0.f, 1.f, 0.f, 2.f},
-			UVec3{0.f, 0.f, -1.f}
-		)
-	);
-	environment_storage.emplace_back(
-		surface::Rectangle(
-			Vec3{-2.f, 0.f, 0.f},
-			Vec4{0.f, 1.f, 0.f, 2.f},
-			Vec4{0.f, 0.f, 1.f, 2.f},
-			UVec3{1.f, 0.f, 0.f}
-		)
-	);
-	environment_storage.emplace_back(
-		surface::Rectangle(
-			Vec3{2.f, 0.f, 0.f},
-			Vec4{0.f, 1.f, 0.f, 2.f},
-			Vec4{0.f, 0.f, 1.f, 2.f},
-			UVec3{-1.f, 0.f, 0.f}
-		)
-	);
-	environment_storage.emplace_back(
-		surface::Rectangle(
-			Vec3{0.f, -2.f, 0.f},
-			Vec4{0.f, 0.f, 1.f, 2.f},
-			Vec4{1.f, 0.f, 0.f, 2.f},
-			UVec3{0.f, 1.f, 0.f}
-		)
-	);
-	environment_storage.emplace_back(
-		surface::Rectangle(
-			Vec3{0.f, 2.f, 0.f},
-			Vec4{0.f, 0.f, 1.f, 2.f},
-			Vec4{1.f, 0.f, 0.f, 2.f},
-			UVec3{0.f, -1.f, 0.f}
+		surface::BoxInner(
+			Vec3{0.f, 0.f, 0.f}, // center
+			SquareMat<3>::ide(), // rot
+			Vec3{2.f, 2.f, 2.f} // hlens (ハーフサイズ)
 		)
 	);
 
@@ -167,7 +117,7 @@ int main() {
 	std::vector<Vec3> point_cloud(lidar.get_points_num());
 
 	// icp_resourceの作成
-	auto icp = icp_resource::to_resource<icp_resource::NormalKnownNonSyclResource>(
+	auto icp = icp_resource::to_resource<icp_resource::NormalKnownResource>(
 		lidar.get_points_num(),
 		std::span{objects}
 	);
@@ -241,7 +191,11 @@ int main() {
 
 		// ICP
 		{
-			icp.run_icp(std::vector{point_cloud}, tikhnov, loop_num, pow2(accept_distance));
+			const auto icp_err =
+				icp.run_icp(std::span{point_cloud}, tikhnov, loop_num, pow2(accept_distance));
+			if (icp_err != icp_resource::IcpError::none) {
+				std::println(stderr, "run_icp failed: too_many_points");
+			}
 			for (u8 iobj = 0; iobj < objects.size(); ++iobj) {
 				estimated_poses[iobj] = icp.obj_poses[iobj];
 			}

@@ -4,7 +4,7 @@
 図形が少ないなら割と高速。  
 数個のオブジェクトのフィッティングができるので、自己位置推定しながらボールの認識をする...とかもできるはず。
 
-SVDによるICPとPoint-to-PlaneのICPを実装。
+Point-to-PlaneのICPを実装。
 
 ## 使い方
 まだfind_packageできるようにはなってない。
@@ -20,9 +20,6 @@ cd <このリポジトリ>
 # ビルドしたいもの以外をコメントアウトしたりBUILD_DEVSをOFFにしてね
 nano build.bash
 
-# icpxに関連するビルド/テストの実行前には`/opt/intel/oneapi/setvars.sh`か以下をソースしてね
-. source_setvars.bash
-
 # ビルド
 . build.bash
 
@@ -32,14 +29,20 @@ nano build.bash
 # ビルドのクリーン
 . clean.bash
 
-# examplesの実行(gcc_build, icpx_buildでも同様)
-./clang_build/Release/examples/svd_simulation < svd_simulation.txt
+# examplesの実行(gcc_buildでも同様)
 ./clang_build/Release/examples/normal_known_simulation < normal_known_simulation.txt
 ```
 
 ## 対応環境
 Ubuntu24.04
 (clang-format-20などとベタ書きしてしまったため。そこらへんを一括置換すればWindowsでも動きそう)
+
+### 必要なコンパイラ
+C++23のうち deducing this (P0847) と多次元`operator[]` (P2128)、`<format>`を使う。
+動作確認済みの最低バージョンは **GCC 14** / **Clang 18**。
+Ubuntu 24.04の既定の`g++`はGCC 13でdeducing thisが使えないので、
+`-DCMAKE_CXX_COMPILER=g++-14`のように明示すること。
+満たさないコンパイラでは`sotoba/stdtypes.hpp`が`#error`で弾く。
 
 ## pre-commit, pre-pushについて
 ### pre-commit
@@ -76,10 +79,14 @@ Cargoを微妙にまねている。
     ICPをループ内で呼ぶ場合、毎回メモリ確保などをするのは望ましくない。  
     そこで、ICPに必要な資源を纏めた型を用意した。この値を生成してから、各ループではrun_icpを呼んでほしい  
     (**詳しくはexamplesを見てね！**)
-- src  
-  現在は空
 - tests  
   テストコードが入っている。doctestを使っている
+  - package_test/  
+    `find_package(sotoba)` が実際に動作することを確認するための、
+    sotoba を外部パッケージとして使う最小の利用側(consumer)プロジェクト。
+    sotoba本体の CMakeLists.txt からは add_subdirectory されない。CIや
+    手元での検証で `cmake -S tests/package_test -B <build> -DCMAKE_PREFIX_PATH=<installdir>`
+    のように単独で configure して使う。
 - .clang*  
   clangツール用の諸設定ファイル。うまく使ってほしい
 - memo.md  

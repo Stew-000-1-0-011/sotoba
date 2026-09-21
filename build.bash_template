@@ -2,42 +2,48 @@
 
 set -eu
 
-# clang
-echo "build clang-debug" >&2
-cmake -B clang_build/Debug/ -GNinja -DCMAKE_PREFIX_PATH=../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=clang++-20 -DCMAKE_BUILD_TYPE=Debug -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
-cmake --build clang_build/Debug/
-cmake --build clang_build/Debug/ --target sotoba_examples
-cmake --build clang_build/Debug/ --target sotoba_tests
-cp ./clang_build/Debug/compile_commands.json .
+any_compiler_found=0
 
-echo "build clang-release" >&2
-cmake -B clang_build/Release/ -GNinja -DCMAKE_PREFIX_PATH=../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=clang++-20 -DCMAKE_BUILD_TYPE=Release -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
-cmake --build clang_build/Release/
-cmake --build clang_build/Release/ --target sotoba_examples
-cmake --build clang_build/Release/ --target sotoba_tests
+# clang
+if command -v clang++-20 >/dev/null 2>&1; then
+	any_compiler_found=1
+
+	echo "build clang-debug" >&2
+	cmake -B clang_build/Debug/ -GNinja -DCMAKE_PREFIX_PATH=../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=clang++-20 -DCMAKE_BUILD_TYPE=Debug -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
+	cmake --build clang_build/Debug/
+	cmake --build clang_build/Debug/ --target sotoba_examples
+	cmake --build clang_build/Debug/ --target sotoba_tests
+	cp ./clang_build/Debug/compile_commands.json .
+
+	echo "build clang-release" >&2
+	cmake -B clang_build/Release/ -GNinja -DCMAKE_PREFIX_PATH=../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=clang++-20 -DCMAKE_BUILD_TYPE=Release -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
+	cmake --build clang_build/Release/
+	cmake --build clang_build/Release/ --target sotoba_examples
+	cmake --build clang_build/Release/ --target sotoba_tests
+else
+	echo "Warning: clang++-20 not found. Skipping clang build." >&2
+fi
 
 # gcc
-echo "build gcc-debug" >&2
-cmake -B gcc_build/Debug/ -GNinja -DCMAKE_PREFIX_PATH=../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_BUILD_TYPE=Debug -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
-cmake --build gcc_build/Debug/
-cmake --build gcc_build/Debug/ --target sotoba_examples
-cmake --build gcc_build/Debug/ --target sotoba_tests
+if command -v g++-14 >/dev/null 2>&1; then
+	any_compiler_found=1
 
-echo "build gcc-release" >&2
-cmake -B gcc_build/Release/ -GNinja -DCMAKE_PREFIX_PATH=../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_BUILD_TYPE=Release -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
-cmake --build gcc_build/Release/
-cmake --build gcc_build/Release/ --target sotoba_examples
-cmake --build gcc_build/Release/ --target sotoba_tests
+	echo "build gcc-debug" >&2
+	cmake -B gcc_build/Debug/ -GNinja -DCMAKE_PREFIX_PATH=../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_BUILD_TYPE=Debug -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
+	cmake --build gcc_build/Debug/
+	cmake --build gcc_build/Debug/ --target sotoba_examples
+	cmake --build gcc_build/Debug/ --target sotoba_tests
 
-# icpx
-echo "build icpx-debug" >&2
-cmake -B icpx_build/Debug/ -GNinja -DCMAKE_PREFIX_PATH=../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=icpx -DCMAKE_BUILD_TYPE=Debug -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
-cmake --build icpx_build/Debug/
-cmake --build icpx_build/Debug/ --target sotoba_examples
-cmake --build icpx_build/Debug/ --target sotoba_tests
+	echo "build gcc-release" >&2
+	cmake -B gcc_build/Release/ -GNinja -DCMAKE_PREFIX_PATH=../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_BUILD_TYPE=Release -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
+	cmake --build gcc_build/Release/
+	cmake --build gcc_build/Release/ --target sotoba_examples
+	cmake --build gcc_build/Release/ --target sotoba_tests
+else
+	echo "Warning: g++-14 not found. Skipping gcc build." >&2
+fi
 
-echo "build icpx-release" >&2
-cmake -B icpx_build/Release/ -GNinja -DCMAKE_PREFIX_PATH=../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=icpx -DCMAKE_BUILD_TYPE=Release -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
-cmake --build icpx_build/Release/
-cmake --build icpx_build/Release/ --target sotoba_examples
-cmake --build icpx_build/Release/ --target sotoba_tests
+if [ "${any_compiler_found}" -eq 0 ]; then
+	echo "Error: neither clang++-20 nor g++-14 was found. Cannot build." >&2
+	exit 1
+fi
