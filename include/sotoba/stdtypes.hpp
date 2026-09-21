@@ -4,13 +4,9 @@
 #include <cstdint>
 #include <version>
 
-// sotoba は C++23 のうち deducing this (P0847) と多次元 operator[] (P2128)、
-// および <format> を使う。-std=c++23 を指定していてもコンパイラがこれらを
-// 実装していないと意味の分かりにくいエラーが大量に出るため、ここで弾く。
-//
-// 注意: Clang 18 は P0847 を実装しているが __cpp_explicit_this_parameter を
-// 定義しない。そのため機能テストマクロが無い場合はコンパイラのバージョンで
-// 判定する。判別できないコンパイラは素通しする (誤って弾くより良い)。
+// -std=c++23 でもコンパイラが未実装だと大量の不可解なエラーになるので先に弾く。
+// Clang 18 は P0847 を実装しているが __cpp_explicit_this_parameter を定義しない
+// ため、マクロが無ければバージョンで判定し、判別できないものは素通しする。
 #if !defined(__cpp_explicit_this_parameter)
 	#if defined(__clang__)
 		#if __clang_major__ < 18
