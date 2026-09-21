@@ -78,17 +78,13 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 		std::vector<SymMat<3>> a_t;
 		std::vector<SquareMat<3>> a_wt;
 		std::vector<usize> counts;
-		// 直近の run_icp における、オブジェクトごとの重みの総和 Σ w_i
 		std::vector<float> weight_sums;
 
 		// ここに入れた姿勢をもとに、ICPがはしり、補正された結果がここに入る
 		std::vector<SE3> obj_poses;
 
-		// 直近の run_icp におけるオブジェクトごとの姿勢更新結果
 		std::vector<ObjStatus> obj_statuses;
-		// 直近の run_icp で実際に回ったループ回数
 		u32 loop_count;
-		// 直近の run_icp の最後の反復で実際に使われた対応距離ゲート
 		float last_gate2;
 
 		u8 obj_num;
@@ -136,60 +132,39 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 			return self.obj_poses[oid];
 		}
 
-		// このバッファが受け入れられる最大点数
 		auto points_capacity() const noexcept -> usize {
 			return this->qs.size();
 		}
 
-		// 直近の run_icp におけるオブジェクトの姿勢更新結果
 		auto obj_status(const u8 oid) const noexcept -> ObjStatus {
 			return this->obj_statuses[oid];
 		}
 
-		// 直近の run_icp におけるオブジェクトの対応点数
 		auto correspondence_count(const u8 oid) const noexcept -> usize {
 			return this->counts[oid];
 		}
 
-		/// 直近の run_icp における、このオブジェクトの重みの総和 Σ w_i。
-		/// 重み付けが無効なときは対応点数と一致する。
-		/// information_matrix() を正規化したい場合の分母になる。
+		/// 重みの総和 Σ w_i。重み付けが無効なら対応点数と一致する。
 		auto weight_sum(const u8 oid) const noexcept -> float {
 			return this->weight_sums[oid];
 		}
 
-		// 直近の run_icp で実際に回ったループ回数 (常に max_loop_num 以下)
 		auto last_loop_count() const noexcept -> u32 {
 			return this->loop_count;
 		}
 
-		/// 直近の run_icp の最後の反復で実際に使われた対応距離ゲート (距離の二乗)。
-		/// coarse-to-fine スケジュールが有効でも、最後の反復では呼び出し側が
-		/// 指定した accept_distance2 と厳密に一致する。
-		/// last_loop_count() == 0 のときは意味を持たない。
+		/// 最後の反復で使われた対応距離ゲート。スケジュール有効時も
+		/// accept_distance2 と厳密に一致する。last_loop_count() == 0 なら無意味。
 		auto last_accept_distance2() const noexcept -> float {
 			return this->last_gate2;
 		}
 
-		/// 直近の run_icp における、このオブジェクトの正規方程式の係数行列
-		/// A = Σ JᵀNJ (情報行列)。添字 0..2 が回転 w、3..5 が並進 t。
-		///
-		/// 対応点数での正規化も tikhonov 正則化も加えていない **生の総和**。
-		/// Σ/N が欲しければ correspondence_count(oid) で割ること
-		/// (weighting.noise を与えた場合は weight_sum(oid) で割ること)。
-		///
-		/// weighting.noise を与えなかった場合、各点の寄与は無重み (w=1) の
-		/// ままなので従来どおり素の総和であり、共分散は Cov ≒ σ² A⁻¹ として
-		/// σ² (センサの距離ノイズ分散) を呼び出し側が与える必要がある。
-		/// weighting.noise を与えた場合、各点の寄与にはすでに 1/σ_i² が
-		/// 重みとして掛かっているため、A はそのまま **真の情報行列** になり、
-		/// Cov ≒ A⁻¹ がそのまま使える (呼び出し側が別途 σ² を与える必要はない)。
-		/// tikhonov を含めないのは、正則化が入ると
-		/// 縮退方向で不確かさを過小評価してしまうため。
-		///
-		/// 値は最後に回ったイテレーションのもの。last_loop_count() == 0 のとき
-		/// (max_loop_num == 0 を渡した場合、および IcpError::too_many_points で
-		/// 抜けた場合) は直前の run_icp の値が残っているので参照しないこと。
+		/// 正規方程式の係数行列 A = Σ JᵀNJ。添字 0..2 が回転 w、3..5 が並進 t。
+		/// 正規化も tikhonov 正則化も加えていない生の総和(正則化を混ぜると縮退方向で
+		/// 不確かさを過小評価するため)。正規化するなら correspondence_count(oid)、
+		/// weighting.noise 指定時は weight_sum(oid) で割る。
+		/// 共分散は weighting.noise 指定時なら Cov ≒ A⁻¹、無指定なら Cov ≒ σ² A⁻¹。
+		/// 値は最後に回った反復のもの。last_loop_count() == 0 のときは無意味。
 		auto information_matrix(const u8 oid) const noexcept -> SymMat<6> {
 			SymMat<6> ret{};
 			for (u8 i = 0; i < 3; ++i)
@@ -202,89 +177,38 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 			return ret;
 		}
 
-		/// 同じく正規方程式の右辺 b = Σ JᵀNe。こちらも生の総和。
+		/// 正規方程式の右辺 b = Σ JᵀNe。こちらも生の総和。
 		auto residual_vector(const u8 oid) const noexcept -> Vec6 {
 			return this->b[oid];
 		}
 
-		/// 姿勢を更新するのに必要な最小の対応点数。
-		///
-		/// 点対面ICPでは対応点1つが1本のスカラー拘束になるので、SE3 の6自由度を
-		/// 決めるには最低6点が要る。
-		///
-		/// ただしこれは必要条件にすぎず十分条件ではない。例えば1枚の平面に
-		/// 正対した点は何点集めても法線方向の並進1自由度しか拘束しないため、
-		/// 対応点数が足りていても係数行列がランク落ちすることはある
-		/// (tikhonov を入れるとコレスキー分解は必ず成功してしまうので、
-		///  縮退はこの閾値では検出できない)。
-		/// 姿勢が実際にどれだけ拘束されているかを見たい場合は
-		/// information_matrix() の固有値を調べること。
+		/// 姿勢を更新するのに必要な最小の対応点数。対応点1つ = スカラー拘束1本なので
+		/// SE3 の6自由度には最低6点が要る。ただし必要条件にすぎず、1枚の平面に
+		/// 正対した点は何点あってもランク落ちする。縮退の検出は
+		/// information_matrix() の固有値を見ること。
 		static constexpr usize min_correspondences = 6;
 
 		/// 点対面ICPを走らせ、obj_poses を更新する。
 		///
-		/// point_cloud はセンサ座標系の点群。面の可視性判定はセンサ原点(0,0,0)を
-		/// 基準に行うため、obj_pose には「マップ座標系の形状をセンサ座標系へ写す変換」
-		/// (= 自己位置の逆変換) を入れること。向きを取り違えると全点が不可視になる。
+		/// point_cloud はセンサ座標系。可視性判定はセンサ原点(0,0,0)基準なので、
+		/// obj_pose には自己位置の逆変換(マップ座標系の形状をセンサ座標系へ写す変換)を
+		/// 入れる。向きを取り違えると全点が不可視になる。
+		/// accept_distance2 系は距離の二乗。
 		///
-		/// accept_distance2 は対応点として受け入れる距離の **二乗**。
+		/// max_loop_num はハード上限で、これを超えて回ることはない(実際の回数は
+		/// last_loop_count())。姿勢を更新できたオブジェクトが無い反復では delta2 が
+		/// 0 のままなので、既定の convergence_delta2 = 0.f でも1回で打ち切る。
 		///
-		/// point_cloud.size() が points_capacity() を超える場合、バッファの再確保は
-		/// 行わず IcpError::too_many_points を返す。このとき姿勢・状態は一切変化しない。
+		/// accept_distance2_begin > 0.f なら、1回目を accept_distance2_begin、
+		/// 最終反復を accept_distance2 として等比でゲートを絞る(coarse-to-fine)。
+		/// 反復数は増えない。粗いゲートのまま打ち切らないよう、このとき早期打ち切りは
+		/// 最終反復でしか判定されない。
 		///
-		/// ループ回数は max_loop_num をハード上限とし、これを超えて回ることはない。
-		/// 姿勢を更新した全オブジェクトの更新量 delta2 の最大値が convergence_delta2
-		/// 以下になった時点で打ち切るため、実際の回数は常に max_loop_num 以下になる
-		/// (last_loop_count() で取得できる)。
-		/// 更新されたオブジェクトが1つも無い場合 (全て too_few_correspondences や
-		/// solve_failed の場合) は最大値が 0 のままなので、既定の
-		/// convergence_delta2 = 0.f でも1回で打ち切られる。姿勢が動かない以上
-		/// 回し続けても結果は変わらないため、これは意図した挙動。
-		///
-		/// 内部で組む正規方程式の係数行列と右辺は information_matrix() /
-		/// residual_vector() で取得できる。どちらも対応点数での正規化や
-		/// tikhonov 正則化を加える前の生の総和であり、ObjStatus によらず
-		/// 最後に回ったイテレーションの値になる。
-		///
-		/// weighting は点ごとの重み付けの設定。既定の `IcpWeighting{}`
-		/// (noise, huber_k とも無指定) では全点の重みが厳密に 1 になり、
-		/// 重み付けを導入する前と完全に同一の挙動・数値結果になる。
-		/// weighting.noise を与えると、点対面残差の分散を
-		/// σ_r²cos² + r²σ_θ²(1-cos²) で見積もり、その逆数を重みとして使う
-		/// (センサ距離に比例して大きくなる横方向誤差を考慮したノイズモデル)。
-		/// weighting.huber_k を与えると、正規化残差 e/σ に対して Huber の
-		/// IRLS 重みをさらに掛け、外れ値(動物体・誤対応など)の影響を抑える。
-		/// weighting が不正な値 (負の σ、0 以下の huber_k、非有限値) の場合は
-		/// IcpError::invalid_weighting を返す。このとき呼び出しは何も行わず、
-		/// 姿勢も状態も変化しない。
-		///
-		/// accept_distance2_begin は対応距離ゲートを反復内で粗→細に絞る
-		/// (coarse-to-fine) ためのパラメータ。
-		/// - `accept_distance2_begin <= 0.f` (既定値) のときはスケジュールしない。
-		///   全反復で accept_distance2 を使う、従来と完全に同一の挙動になる。
-		/// - `accept_distance2_begin > 0.f` のときは、1回目の反復で
-		///   accept_distance2_begin、最終反復で accept_distance2 になるよう
-		///   **等比数列**でゲートを絞る。最終反復のゲートは浮動小数点の
-		///   累積誤差を避けるため accept_distance2 に厳密に一致させる
-		///   (等比の積算値ではなく、呼び出し側が指定した値そのものを使う)。
-		///   初期姿勢の誤差が (絞る前の) 対応距離ゲートを超えると誤対応に
-		///   固着しやすいため、広いゲートから始めることで収束半径を広げられる。
-		///
-		/// **反復回数の上限 max_loop_num は増えない**。coarse-to-fine は
-		/// 既存の反復予算の中でゲートを絞るだけであり、追加の反復は行わない。
-		///
-		/// accept_distance2_begin が非有限、または
-		/// `0.f < accept_distance2_begin < accept_distance2` (狭い→広いの
-		/// 逆順、呼び出し側のバグの可能性が高い) の場合は
-		/// IcpError::invalid_accept_schedule を返す。このとき呼び出しは
-		/// 何も行わず、姿勢も状態も変化しない。
-		///
-		/// **早期打ち切りとの相互作用**: convergence_delta2 による早期打ち切りは、
-		/// スケジュールが有効な間はゲートがまだ粗い段階で発動しうるため、
-		/// 現在のゲートが accept_distance2 に達している反復 (スケジュール無効時は
-		/// 常に、スケジュール有効時は最終反復のみ) でのみ許可する。
-		/// そのため、スケジュールを有効にすると早期打ち切りは実質無効になる
-		/// (最終反復でしか判定されず、break しても回る回数は変わらない)。
+		/// 以下は何も行わずに返す(姿勢・状態とも不変):
+		/// - point_cloud.size() > points_capacity() → too_many_points (再確保はしない)
+		/// - weighting が不正 → invalid_weighting
+		/// - accept_distance2_begin が非有限、または accept_distance2 より小さい
+		///   → invalid_accept_schedule
 		auto run_icp(
 			std::span<const Vec3> point_cloud,
 			const Vec6& tikhonov,
@@ -317,10 +241,7 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 
 			this->loop_count = 0;
 
-			// 対応距離ゲートの coarse-to-fine スケジュール (ループの外で一度だけ計算)。
-			// accept_distance2_begin <= 0.f なら scheduled=false のままで、
-			// current_gate2 は常に accept_distance2 そのものになる
-			// (従来・重み付け導入前と完全に同一の数値結果を保つため)。
+			// ゲートのスケジュール。scheduled=false なら常に accept_distance2 のまま。
 			const bool scheduled = (accept_distance2_begin > 0.f) && (max_loop_num > 1);
 			const float gate_ratio = scheduled
 				? std::exp(
@@ -333,8 +254,7 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 			for (u32 iloop = 0; iloop < max_loop_num; ++iloop) {
 				this->loop_count = iloop + 1;
 
-				// 最終反復では浮動小数点の累積誤差を避け、呼び出し側が指定した
-				// accept_distance2 を厳密に使う。
+				// 最終反復は積算の丸めを避けて指定値をそのまま使う
 				const float current_gate2 =
 					(iloop + 1 == max_loop_num) ? accept_distance2 : gate2;
 				this->last_gate2 = current_gate2;
@@ -413,7 +333,6 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 					const float err_n = vec::dot((p - q), n);
 					const Vec3 p_c = vec::cross(p, n);
 
-					// --- 点ごとの重み ---
 					float w = 1.f;
 					float sigma2 = 1.f; // 正規化残差を作るための分散 (noise 無指定なら 1)
 					if (weighting.noise) {
@@ -422,7 +341,6 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 						const float cos2 = (r2 > float(math::epsilon)) ? (np * np / r2) : 1.f;
 						const float sr2 = math::pow2(weighting.noise->sigma_range);
 						const float st2 = math::pow2(weighting.noise->sigma_angle);
-						// 0除算を避けるための純粋な数値ガード (モデル上の意味は無い)
 						sigma2 =
 							std::max(sr2 * cos2 + r2 * st2 * (1.f - cos2), float(math::epsilon));
 						w = 1.f / sigma2;
@@ -442,25 +360,18 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 					this->weight_sums[iobj] += w;
 				}
 
-				// 次の反復に向けてゲートを等比で絞る。current_gate2 の計算は
-				// 常に accept_distance2 / gate2 の三項演算で行うため、この乗算の
-				// 丸め誤差が current_gate2 に影響することはない。
 				gate2 *= gate_ratio;
 
 				float max_delta2 = 0.f;
 				for (u8 iobj = 0; iobj < this->obj_num; ++iobj) {
 					if (this->counts[iobj] < min_correspondences) {
-						// 点が少なすぎるオブジェクトはスキップ
 						this->obj_statuses[iobj] = ObjStatus::too_few_correspondences;
 						continue;
 					}
-					// 正規化と tikhonov 正則化は Eigen 側を組むときにだけ適用する。
-					// a_w / a_t / a_wt / b は生の総和 (Σ) のまま残し、
-					// information_matrix() / residual_vector() から素の情報行列を
-					// 取れるようにする。
+					// 正規化と tikhonov は Eigen 側を組むときにだけ適用し、
+					// a_* / b は生の総和のまま残す (information_matrix() のため)。
 					const float n = this->weight_sums[iobj];
 
-					// コレスキー分解、w, tを求める
 					using Matrix6f = Eigen::Matrix<float, 6, 6>;
 
 					Matrix6f a_tri;
@@ -490,21 +401,16 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 						SE3{math::UQuaternion{vec::fast_normalize(Vec4{x[0], x[1], x[2], 2.f})},
 							{x[3], x[4], x[5]}};
 
-					// 推定姿勢を更新
 					this->obj_poses[iobj] = (diff * this->obj_poses[iobj]).normalize();
 					this->obj_statuses[iobj] = ObjStatus::updated;
 
-					// 早期打ち切り判定用のdelta2 (w, tそれぞれのdotの和)
 					const Vec3 w{x[0], x[1], x[2]};
 					const Vec3 t{x[3], x[4], x[5]};
 					const float delta2 = vec::dot(w, w) + vec::dot(t, t);
 					if (max_delta2 < delta2) max_delta2 = delta2;
 				}
 
-				// 早期打ち切り: 姿勢を更新した全オブジェクトのdelta2の最大値が
-				// convergence_delta2以下ならループを抜ける。max_loop_numがハード上限。
-				// ただし、ゲートがまだ粗い段階(スケジュール有効時の最終反復以外)で
-				// 発動すると粗い解のまま終わってしまうため、現在のゲートが
+				// 早期打ち切り。粗いゲートのまま終わらないよう、ゲートが
 				// accept_distance2 に到達している反復でのみ判定する。
 				if (!scheduled || iloop + 1 == max_loop_num) {
 					if (max_delta2 <= convergence_delta2) break;
@@ -519,8 +425,7 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 				  NormalKnownResource<ExplanationOnlySurface<0>, ExplanationOnlySurface<1>>,
 				  ExplanationOnlySurface<0>,
 				  ExplanationOnlySurface<1>>);
-	// 面の種類が2つ以外でも成立すること (icp_resource concept が種類数を
-	// ハードコードしていないことの担保)。
+	// 面の種類が2つ以外でも成立すること (concept が種類数をハードコードしていない)
 	static_assert(icp_resource::icp_resource<
 				  NormalKnownResource<ExplanationOnlySurface<0>>,
 				  ExplanationOnlySurface<0>>);

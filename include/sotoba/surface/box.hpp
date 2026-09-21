@@ -178,9 +178,8 @@ namespace sotoba::surface::box_impl {
 			Vec3 cq_local{};
 			float d = std::numeric_limits<float>::infinity();
 			for (u8 i = 0; i < 3; ++i) {
-				// -i 側の面 (ローカル座標 -hlens[i])。原点がこの面より内側にいるときだけ見える。
-				// BoxOuter とは異なり、両面が同時に可視になりうるので if/if にすること
-				// (else if にすると +i 側が永久に選ばれなくなる)。
+				// -i 側の面。BoxOuter と違い両面が同時に可視になりうるので if/if
+				// (else if だと +i 側が永久に選ばれない)。
 				if ((wall_exist & u32(1) << 2 * i) && -this->hlens[i] < co_local[i]) {
 					Vec3 cq_local_ = clamped_cp_local;
 					cq_local_[i] = -this->hlens[i];
@@ -189,7 +188,6 @@ namespace sotoba::surface::box_impl {
 						cq_local = cq_local_;
 					}
 				}
-				// +i 側の面 (ローカル座標 +hlens[i])。
 				if ((wall_exist & u32(1) << (2 * i + 1)) && co_local[i] < this->hlens[i]) {
 					Vec3 cq_local_ = clamped_cp_local;
 					cq_local_[i] = this->hlens[i];
@@ -215,8 +213,7 @@ namespace sotoba::surface::box_impl {
 			UVec3 n{};
 			float d = std::numeric_limits<float>::infinity();
 			for (u8 i = 0; i < 3; ++i) {
-				// -i 側の面。内向き法線は +e_i = rot[i] (BoxOuter の外向き -rot[i] の逆)。
-				// if/if であること (BoxInner では両面が同時に可視になりうるため)。
+				// -i 側の面。内向き法線は +rot[i]。if/if であること (上と同じ理由)。
 				if ((wall_exist & u32(1) << 2 * i) && -this->hlens[i] < co_local[i]) {
 					Vec3 cq_local_ = clamped_cp_local;
 					cq_local_[i] = -this->hlens[i];
@@ -226,7 +223,6 @@ namespace sotoba::surface::box_impl {
 						cq_local = cq_local_;
 					}
 				}
-				// +i 側の面。内向き法線は -e_i = -rot[i]。
 				if ((wall_exist & u32(1) << (2 * i + 1)) && co_local[i] < this->hlens[i]) {
 					Vec3 cq_local_ = clamped_cp_local;
 					cq_local_[i] = this->hlens[i];
@@ -249,11 +245,8 @@ namespace sotoba::surface::box_impl {
 			}
 		}
 
-		// Slabs法。BoxOuter は t_enter (外から入る点) を返すが、
-		// BoxInner は内側から見るので t_exit (内側から出ていく点) を返す。
-		// 出ていく面が wall_exist で存在しない場合、レイはそのまま抜けるので
-		// 無限大を返す (BoxOuter の ray_collision は wall_exist を見ないが、
-		// BoxInner では見ること)。
+		// Slabs法。内側から見るので BoxOuter の t_enter ではなく t_exit を返す。
+		// 出ていく面が無ければレイは抜けるので無限大。
 		auto ray_collision(const UVec3& ray) const noexcept -> float {
 			const Vec3 co_local = this->rot * -this->center;
 			float t_enter = -std::numeric_limits<float>::infinity();
@@ -264,7 +257,6 @@ namespace sotoba::surface::box_impl {
 				const Vec3 axis = this->rot[i];
 				const float ray_d = vec::dot(ray, axis);
 				if (math::fabs(ray_d) < math::epsilon) {
-					// レイがこのスラブに平行。原点がスラブ外なら交差しない。
 					if (!(-hlens[i] < co_local[i] && co_local[i] < hlens[i]))
 						return std::numeric_limits<float>::infinity();
 					else continue;
@@ -285,7 +277,6 @@ namespace sotoba::surface::box_impl {
 			if (t_exit < math::epsilon || t_exit < t_enter)
 				return std::numeric_limits<float>::infinity();
 
-			// 出ていく面が存在しなければレイは抜ける
 			const u32 exit_bit = u32(1) << (2 * u32(exit_axis) + (exit_is_plus ? 1 : 0));
 			if (!(this->wall_exist & exit_bit)) return std::numeric_limits<float>::infinity();
 
