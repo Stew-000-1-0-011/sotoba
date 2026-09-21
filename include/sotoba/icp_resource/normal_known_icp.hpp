@@ -450,6 +450,9 @@ namespace sotoba::icp_resource {
 	#include <doctest.h>
 
 	#include "sotoba/math/approx_check.hpp"
+	// テストが surface::Rectangle を使うので、include 順に依存せず
+	// 自己完結するようここで include しておく。
+	#include "sotoba/surface/rectangle.hpp"
 
 TEST_SUITE("normal_known_icp.hpp") {
 	using namespace sotoba;
