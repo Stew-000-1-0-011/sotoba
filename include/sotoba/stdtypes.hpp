@@ -2,6 +2,34 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <version>
+
+// sotoba は C++23 のうち deducing this (P0847) と多次元 operator[] (P2128)、
+// および <format> を使う。-std=c++23 を指定していてもコンパイラがこれらを
+// 実装していないと意味の分かりにくいエラーが大量に出るため、ここで弾く。
+//
+// 注意: Clang 18 は P0847 を実装しているが __cpp_explicit_this_parameter を
+// 定義しない。そのため機能テストマクロが無い場合はコンパイラのバージョンで
+// 判定する。判別できないコンパイラは素通しする (誤って弾くより良い)。
+#if !defined(__cpp_explicit_this_parameter)
+	#if defined(__clang__)
+		#if __clang_major__ < 18
+			#error "sotoba requires deducing this (P0847). Clang 18 or later is required."
+		#endif
+	#elif defined(__GNUC__)
+		#if __GNUC__ < 14
+			#error "sotoba requires deducing this (P0847). GCC 14 or later is required."
+		#endif
+	#endif
+#endif
+
+#if !defined(__cpp_multidimensional_subscript)
+	#error "sotoba requires multidimensional subscript (P2128). Compile with -std=c++23 on GCC 14+ / Clang 18+."
+#endif
+
+#if !defined(__cpp_lib_format)
+	#error "sotoba requires <format>. Use libstdc++ 13+ or libc++ 17+."
+#endif
 
 namespace sotoba::stdtypes {
 	using u8 = std::uint8_t;
