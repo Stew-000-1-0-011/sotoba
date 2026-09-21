@@ -37,6 +37,7 @@ jobs:
         # インストール済みのsotobaがfind_packageで実際に使えることを確認する。
         run: |
           cmake -S tests/package_test -B package_test_build -GNinja \
+            -DCMAKE_CXX_COMPILER=g++-14 \
             -DCMAKE_PREFIX_PATH=$PWD/install
 
       - name: Build package_test

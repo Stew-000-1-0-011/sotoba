@@ -37,6 +37,13 @@ nano build.bash
 Ubuntu24.04
 (clang-format-20などとベタ書きしてしまったため。そこらへんを一括置換すればWindowsでも動きそう)
 
+### 必要なコンパイラ
+C++23のうち deducing this (P0847) と多次元`operator[]` (P2128)、`<format>`を使う。
+動作確認済みの最低バージョンは **GCC 14** / **Clang 18**。
+Ubuntu 24.04の既定の`g++`はGCC 13でdeducing thisが使えないので、
+`-DCMAKE_CXX_COMPILER=g++-14`のように明示すること。
+満たさないコンパイラでは`sotoba/stdtypes.hpp`が`#error`で弾く。
+
 ## pre-commit, pre-pushについて
 ### pre-commit
 clang-formatでのフォーマットをする
