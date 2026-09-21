@@ -88,6 +88,8 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 		std::vector<ObjStatus> obj_statuses;
 		// 直近の run_icp で実際に回ったループ回数
 		u32 loop_count;
+		// 直近の run_icp の最後の反復で実際に使われた対応距離ゲート
+		float last_gate2;
 
 		u8 obj_num;
 
@@ -110,6 +112,7 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 			, obj_poses{}
 			, obj_statuses{}
 			, loop_count{0}
+			, last_gate2{0.f}
 			, obj_num{obj_num} {
 			(
 				[&]<surfacelike S_>() {
@@ -158,6 +161,14 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 		// 直近の run_icp で実際に回ったループ回数 (常に max_loop_num 以下)
 		auto last_loop_count() const noexcept -> u32 {
 			return this->loop_count;
+		}
+
+		/// 直近の run_icp の最後の反復で実際に使われた対応距離ゲート (距離の二乗)。
+		/// coarse-to-fine スケジュールが有効でも、最後の反復では呼び出し側が
+		/// 指定した accept_distance2 と厳密に一致する。
+		/// last_loop_count() == 0 のときは意味を持たない。
+		auto last_accept_distance2() const noexcept -> float {
+			return this->last_gate2;
 		}
 
 		/// 直近の run_icp における、このオブジェクトの正規方程式の係数行列
@@ -326,6 +337,7 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 				// accept_distance2 を厳密に使う。
 				const float current_gate2 =
 					(iloop + 1 == max_loop_num) ? accept_distance2 : gate2;
+				this->last_gate2 = current_gate2;
 
 				// surfsをobj_posesに従い移動
 				[&]<usize... idxs_>(std::index_sequence<idxs_...>) {
@@ -1266,6 +1278,34 @@ TEST_SUITE("normal_known_icp.hpp") {
 		// accept_distance2に厳密に一致していれば両者とも25点(外れ点は含まない)。
 		CHECK(icp_no_schedule.correspondence_count(0) == 25);
 		CHECK(icp_scheduled.correspondence_count(0) == icp_no_schedule.correspondence_count(0));
+	}
+
+	TEST_CASE("run_icp: スケジュール有効でも最終反復のゲートはaccept_distance2と厳密に一致する") {
+		// 等比で掛け続けた積算値は浮動小数点誤差で accept_distance2 から
+		// ずれるので、最終反復だけは呼び出し側の指定値を厳密に使っている、
+		// ということを last_accept_distance2() で直接確認する。
+		auto icp = make_icp(forward_rect(), 25);
+		const auto points = sample_points(SE3::trans(Vec3{0.f, 0.f, 5.f}));
+		icp.obj_pose(0) = SE3::trans(Vec3{0.f, 0.f, 4.9f});
+
+		constexpr float accept2 = 0.03f;
+		constexpr float begin2 = 7.f;
+		constexpr u32 max_loop_num = 17;
+		const Vec6 tikhonov{0.01f, 0.01f, 0.01f, 0.01f, 0.01f, 0.01f};
+
+		const auto err =
+			icp.run_icp(std::span{points}, tikhonov, max_loop_num, accept2, 0.f, {}, begin2);
+
+		REQUIRE(err == IcpError::none);
+		REQUIRE(icp.last_loop_count() == max_loop_num);
+		CHECK(icp.last_accept_distance2() == accept2);
+
+		// 積算値がそのまま使われていたら一致しないこと (テストが実効性を持つこと)
+		float acc = begin2;
+		const float ratio =
+			std::exp(std::log(accept2 / begin2) / static_cast<float>(max_loop_num - 1));
+		for (u32 i = 0; i + 1 < max_loop_num; ++i) acc *= ratio;
+		CHECK(acc != accept2);
 	}
 
 	TEST_CASE("run_icp: max_loop_num=1でスケジュールを指定してもaccept_distance2が使われ壊れない") {
