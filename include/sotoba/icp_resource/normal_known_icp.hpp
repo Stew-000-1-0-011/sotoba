@@ -537,8 +537,9 @@ namespace sotoba::icp_resource {
 	#include <doctest.h>
 
 	#include "sotoba/math/approx_check.hpp"
-	// テストが surface::Rectangle を使うので、include 順に依存せず
-	// 自己完結するようここで include しておく。
+	// テストが surface::Rectangle / surface::BoxInner を使うので、include 順に
+	// 依存せず自己完結するようここで include しておく。
+	#include "sotoba/surface/box.hpp"
 	#include "sotoba/surface/rectangle.hpp"
 
 TEST_SUITE("normal_known_icp.hpp") {
@@ -550,6 +551,7 @@ TEST_SUITE("normal_known_icp.hpp") {
 	using math::Vec4;
 	using math::Vec6;
 	namespace vec = math::vec;
+	using surface::BoxInner;
 	using surface::Rectangle;
 	using icp_resource::IcpError;
 	using icp_resource::IcpWeighting;
@@ -1105,6 +1107,264 @@ TEST_SUITE("normal_known_icp.hpp") {
 		const auto im = icp.information_matrix(0);
 		for (u8 i = 0; i < 6; ++i)
 			for (u8 j = i; j < 6; ++j) { CHECK(std::isfinite(im[i, j])); }
+	}
+
+	// --- accept_distance2_begin (coarse-to-fine) ---
+
+	// BoxInner (立方体、原点中心) の全6面から3x3グリッドでサンプルした点群を使う。
+	// forward_rect() の1枚の平面と違い6面あるので、6自由度すべてが観測できる。
+	inline auto box_hlens() -> Vec3 { return Vec3{2.f, 2.f, 2.f}; }
+
+	inline auto make_box_icp(const usize capacity) -> NormalKnownResource<BoxInner> {
+		const BoxInner local_box{Vec3{0.f, 0.f, 0.f}, math::SquareMat<3>::ide(), box_hlens()};
+		std::array<std::vector<ObjSurfId>, 1> osids{
+			std::vector<ObjSurfId>{osid_pack(ObjId(0), SurfId(0))}
+		};
+		return NormalKnownResource<BoxInner>{
+			std::tuple{std::vector<BoxInner>{local_box}},
+			std::move(osids),
+			1,
+			capacity
+		};
+	}
+
+	inline auto sample_box_points(const SE3& true_pose) -> std::vector<Vec3> {
+		const Vec3 hlens = box_hlens();
+		std::vector<Vec3> local_pts;
+		for (int axis = 0; axis < 3; ++axis) {
+			const int j = (axis + 1) % 3;
+			const int k = (axis + 2) % 3;
+			for (const float sign : {-1.f, 1.f}) {
+				for (const float fj : {-0.6f, 0.f, 0.6f}) {
+					for (const float fk : {-0.6f, 0.f, 0.6f}) {
+						Vec3 local{};
+						local[axis] = sign * hlens[axis];
+						local[j] = fj * hlens[j];
+						local[k] = fk * hlens[k];
+						local_pts.push_back(local);
+					}
+				}
+			}
+		}
+		std::vector<Vec3> pts;
+		pts.reserve(local_pts.size());
+		for (const auto& lp : local_pts) pts.push_back(true_pose.app_v(lp));
+		return pts;
+	}
+
+	TEST_CASE(
+		"run_icp: 【本命】coarse-to-fineで同じmax_loop_numのまま収束半径が広がる(BoxInner)"
+	) {
+		// 1枚の平面は6自由度が決まらないので、6面あるBoxInnerを使う。
+		const SE3 true_pose = SE3::ide();
+		const auto points = sample_box_points(true_pose);
+		REQUIRE(points.size() == 54);
+
+		// シード: 全軸に一様な並進誤差(0.35m)を与える。BoxInnerは全壁が同じ量だけ
+		// 平行移動するので、どの面の点もシード姿勢に対する点対面距離がほぼ一様に
+		// 約0.35m (distance^2 ≈ 0.1225) になる。
+		const SE3 seed = SE3::trans(Vec3{0.35f, 0.35f, 0.35f});
+
+		const Vec6 tikhonov{0.001f, 0.001f, 0.001f, 0.001f, 0.001f, 0.001f};
+		constexpr u32 max_loop_num = 30;
+		constexpr float accept_distance2 = 0.04f; // 0.2m: シードの誤差(0.35m)より狭い
+		constexpr float accept_distance2_begin = 4.0f; // 2.0m: シードの誤差より十分広い
+		// 早期打ち切りを無効化し、両者が実際に同じ回数だけ回ったことを
+		// last_loop_count()で確認できるようにする。max_delta2は常に0以上なので、
+		// convergence_delta2に負の値を渡すと打ち切り条件が絶対に成立しなくなる。
+		constexpr float convergence_delta2 = -1.f;
+
+		auto icp_no_schedule = make_box_icp(points.size());
+		icp_no_schedule.obj_pose(0) = seed;
+		const auto err_no_schedule = icp_no_schedule.run_icp(
+			std::span{points},
+			tikhonov,
+			max_loop_num,
+			accept_distance2,
+			convergence_delta2
+		);
+
+		auto icp_scheduled = make_box_icp(points.size());
+		icp_scheduled.obj_pose(0) = seed;
+		const auto err_scheduled = icp_scheduled.run_icp(
+			std::span{points},
+			tikhonov,
+			max_loop_num,
+			accept_distance2,
+			convergence_delta2,
+			IcpWeighting{},
+			accept_distance2_begin
+		);
+
+		REQUIRE(err_no_schedule == IcpError::none);
+		REQUIRE(err_scheduled == IcpError::none);
+
+		// 回数を増やして誤魔化していないこと: 両者とも同じmax_loop_num予算を
+		// 使い切っている(早期打ち切りを無効化しているので必ずmax_loop_numに達する)。
+		CHECK(icp_no_schedule.last_loop_count() == max_loop_num);
+		CHECK(icp_scheduled.last_loop_count() == max_loop_num);
+		CHECK(icp_no_schedule.last_loop_count() == icp_scheduled.last_loop_count());
+
+		// スケジュール無し: シードの誤差(0.35m)がいきなり狭いゲート(0.2m)を
+		// 超えるため対応が一切取れず、姿勢はシードのまま固着する
+		// (lio_localizationが単体検証で確認した固着そのもの)。
+		CHECK(icp_no_schedule.obj_status(0) == ObjStatus::too_few_correspondences);
+		CHECK(icp_no_schedule.correspondence_count(0) == 0);
+		CHECK(ApproxCheck{icp_no_schedule.obj_pose(0)} == ApproxCheck{seed});
+
+		// スケジュール有り: 広いゲートから始めるので対応が取れ、真値へ収束する。
+		CHECK(icp_scheduled.obj_status(0) == ObjStatus::updated);
+
+		const float err_no_schedule2 = vec::distance2(icp_no_schedule.obj_pose(0).p, true_pose.p);
+		const float err_scheduled2 = vec::distance2(icp_scheduled.obj_pose(0).p, true_pose.p);
+		CHECK(err_scheduled2 < 0.01f); // 並進誤差 < 10cm まで収束する
+
+		// 本命: 同じ点群・同じ初期姿勢・同じmax_loop_num・同じaccept_distance2で、
+		// スケジュール有りの方が誤差が明確に小さい(収束半径が広がったことの直接証拠)。
+		CHECK(err_scheduled2 < err_no_schedule2);
+	}
+
+	TEST_CASE("run_icp: 最終反復のゲートがaccept_distance2と厳密に一致する(境界の外れ点で間接確認)") {
+		// ゲートの値そのものは外から観測できないので、accept_distance2と
+		// accept_distance2_beginの間に収まる距離に外れ点を1つ置き、スケジュール
+		// 有り/無しで最終的なcorrespondence_countが一致することで間接的に確認する。
+		// もし最終反復のゲートがaccept_distance2に厳密に一致していなければ、
+		// スケジュール有りの方だけこの外れ点を対応点として拾ってしまい、
+		// correspondence_countがスケジュール無しとずれるはず。
+		const SE3 true_pose = SE3::trans(Vec3{0.f, 0.f, 5.f});
+		auto points = sample_points(true_pose); // 25点、すべて面上ぴったり
+		// 面から1.0m飛び出した外れ点 (narrow=0.2m と wide=2.0m のちょうど間)。
+		points.push_back(true_pose.app_v(Vec3{0.f, 0.f, 1.0f}));
+		REQUIRE(points.size() == 26);
+
+		constexpr float accept_distance2 = 0.04f; // 0.2m
+		constexpr float accept_distance2_begin = 4.0f; // 2.0m
+		constexpr u32 max_loop_num = 5;
+		const Vec6 tikhonov{0.001f, 0.001f, 0.001f, 0.001f, 0.001f, 0.001f};
+
+		auto icp_no_schedule = make_icp(forward_rect(), points.size());
+		icp_no_schedule.obj_pose(0) = true_pose; // 既に正解姿勢
+		const auto err_no_schedule =
+			icp_no_schedule.run_icp(std::span{points}, tikhonov, max_loop_num, accept_distance2);
+
+		auto icp_scheduled = make_icp(forward_rect(), points.size());
+		icp_scheduled.obj_pose(0) = true_pose;
+		const auto err_scheduled = icp_scheduled.run_icp(
+			std::span{points},
+			tikhonov,
+			max_loop_num,
+			accept_distance2,
+			0.f,
+			IcpWeighting{},
+			accept_distance2_begin
+		);
+
+		REQUIRE(err_no_schedule == IcpError::none);
+		REQUIRE(err_scheduled == IcpError::none);
+
+		// 外れ点はnarrowゲート(0.2m)を超えるので、最終反復のゲートが
+		// accept_distance2に厳密に一致していれば両者とも25点(外れ点は含まない)。
+		CHECK(icp_no_schedule.correspondence_count(0) == 25);
+		CHECK(icp_scheduled.correspondence_count(0) == icp_no_schedule.correspondence_count(0));
+	}
+
+	TEST_CASE("run_icp: max_loop_num=1でスケジュールを指定してもaccept_distance2が使われ壊れない") {
+		auto icp = make_icp(forward_rect(), 25);
+		const auto points = sample_points(SE3::trans(Vec3{0.f, 0.f, 5.f}));
+		icp.obj_pose(0) = SE3::trans(Vec3{0.f, 0.f, 4.5f});
+
+		// accept_distance2_begin(200) > accept_distance2(100)で正当な値だが、
+		// max_loop_num=1なのでスケジュールは無効化され、accept_distance2がそのまま
+		// 使われる(壊れない: ゼロ除算や不正なlog評価が起きない)。
+		const auto err =
+			icp.run_icp(std::span{points}, Vec6{}, 1, 100.f, 0.f, IcpWeighting{}, 200.f);
+
+		CHECK(err == IcpError::none);
+		CHECK(icp.last_loop_count() == 1);
+	}
+
+	TEST_CASE("run_icp: accept_distance2_beginが不正ならinvalid_accept_scheduleが返り姿勢が不変") {
+		auto icp = make_icp(forward_rect(), 25);
+		const auto points = sample_points(SE3::trans(Vec3{0.f, 0.f, 5.f}));
+		const SE3 seed = SE3::trans(Vec3{0.f, 0.f, 4.5f});
+
+		SUBCASE("accept_distance2より小さい(狭い→広いの逆順)") {
+			icp.obj_pose(0) = seed;
+			const auto err =
+				icp.run_icp(std::span{points}, Vec6{}, 5, 100.f, 0.f, IcpWeighting{}, 50.f);
+			CHECK(err == IcpError::invalid_accept_schedule);
+			CHECK(ApproxCheck{icp.obj_pose(0)} == ApproxCheck{seed});
+			CHECK(icp.obj_status(0) == ObjStatus::not_run);
+			CHECK(icp.last_loop_count() == 0);
+		}
+
+		SUBCASE("NaN") {
+			icp.obj_pose(0) = seed;
+			const auto err = icp.run_icp(
+				std::span{points},
+				Vec6{},
+				5,
+				100.f,
+				0.f,
+				IcpWeighting{},
+				std::numeric_limits<float>::quiet_NaN()
+			);
+			CHECK(err == IcpError::invalid_accept_schedule);
+			CHECK(ApproxCheck{icp.obj_pose(0)} == ApproxCheck{seed});
+		}
+
+		SUBCASE("+inf") {
+			icp.obj_pose(0) = seed;
+			const auto err = icp.run_icp(
+				std::span{points},
+				Vec6{},
+				5,
+				100.f,
+				0.f,
+				IcpWeighting{},
+				std::numeric_limits<float>::infinity()
+			);
+			CHECK(err == IcpError::invalid_accept_schedule);
+			CHECK(ApproxCheck{icp.obj_pose(0)} == ApproxCheck{seed});
+		}
+
+		SUBCASE("-inf") {
+			icp.obj_pose(0) = seed;
+			const auto err = icp.run_icp(
+				std::span{points},
+				Vec6{},
+				5,
+				100.f,
+				0.f,
+				IcpWeighting{},
+				-std::numeric_limits<float>::infinity()
+			);
+			CHECK(err == IcpError::invalid_accept_schedule);
+			CHECK(ApproxCheck{icp.obj_pose(0)} == ApproxCheck{seed});
+		}
+	}
+
+	TEST_CASE("run_icp: スケジュール有効時はconvergence_delta2を非常に大きくしてもmax_loop_numまで回る") {
+		// スケジュールが有効だと、早期打ち切り判定は「現在のゲートがaccept_distance2に
+		// 到達している反復(=最終反復)」でしか行われないため、実質的に無効になる。
+		auto icp = make_icp(forward_rect(), 25);
+		const auto points = sample_points(SE3::trans(Vec3{0.f, 0.f, 5.f}));
+		icp.obj_pose(0) = SE3::trans(Vec3{0.f, 0.f, 4.5f});
+
+		const Vec6 tikhonov{0.01f, 0.01f, 0.01f, 0.01f, 0.01f, 0.01f};
+		constexpr u32 max_loop_num = 20;
+		const auto err = icp.run_icp(
+			std::span{points},
+			tikhonov,
+			max_loop_num,
+			100.f,
+			1e6f,
+			IcpWeighting{},
+			400.f
+		);
+
+		CHECK(err == IcpError::none);
+		CHECK(icp.last_loop_count() == max_loop_num);
 	}
 }
 
