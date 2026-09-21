@@ -195,8 +195,19 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 			return this->b[oid];
 		}
 
-		// 点が少なすぎて姿勢を更新しない対応点数の閾値。変更しないこと。
-		static constexpr usize min_correspondences = 3;
+		/// 姿勢を更新するのに必要な最小の対応点数。
+		///
+		/// 点対面ICPでは対応点1つが1本のスカラー拘束になるので、SE3 の6自由度を
+		/// 決めるには最低6点が要る。
+		///
+		/// ただしこれは必要条件にすぎず十分条件ではない。例えば1枚の平面に
+		/// 正対した点は何点集めても法線方向の並進1自由度しか拘束しないため、
+		/// 対応点数が足りていても係数行列がランク落ちすることはある
+		/// (tikhonov を入れるとコレスキー分解は必ず成功してしまうので、
+		///  縮退はこの閾値では検出できない)。
+		/// 姿勢が実際にどれだけ拘束されているかを見たい場合は
+		/// information_matrix() の固有値を調べること。
+		static constexpr usize min_correspondences = 6;
 
 		/// 点対面ICPを走らせ、obj_poses を更新する。
 		///
@@ -683,6 +694,45 @@ TEST_SUITE("normal_known_icp.hpp") {
 		const auto im_big = icp_big.information_matrix(0);
 		for (u8 i = 0; i < 6; ++i)
 			for (u8 j = i; j < 6; ++j) { CHECK(im_zero[i, j] == im_big[i, j]); }
+	}
+
+	TEST_CASE("run_icp: 対応点が min_correspondences 未満なら姿勢を更新しない") {
+		// 点対面の対応点1つ = スカラー拘束1本なので、SE3 の6自由度を決めるには
+		// 最低 6 点が要る。境界 (5点 / 6点) をまたいで挙動が変わることを確認する。
+		static_assert(NormalKnownResource<Rectangle>::min_correspondences == 6);
+
+		const SE3 true_pose = SE3::trans(Vec3{0.f, 0.f, 5.f});
+		const auto points = sample_points(true_pose); // 25点
+		// 1枚の平面はランク落ちするので、コレスキーを成功させるため tikhonov を入れる
+		const Vec6 tikhonov{0.01f, 0.01f, 0.01f, 0.01f, 0.01f, 0.01f};
+
+		SUBCASE("5点では更新されず、姿勢は呼び出し時の値のまま") {
+			auto icp = make_icp(forward_rect(), 25);
+			const SE3 seed = SE3::trans(Vec3{0.f, 0.f, 4.9f});
+			icp.obj_pose(0) = seed;
+
+			const auto err =
+				icp.run_icp(std::span{points}.subspan(0, 5), tikhonov, 3, 100.f);
+
+			CHECK(err == IcpError::none);
+			CHECK(icp.correspondence_count(0) == 5);
+			CHECK(icp.obj_status(0) == ObjStatus::too_few_correspondences);
+			CHECK(ApproxCheck{icp.obj_pose(0)} == ApproxCheck{seed});
+		}
+
+		SUBCASE("6点なら更新される") {
+			auto icp = make_icp(forward_rect(), 25);
+			const SE3 seed = SE3::trans(Vec3{0.f, 0.f, 4.9f});
+			icp.obj_pose(0) = seed;
+
+			const auto err =
+				icp.run_icp(std::span{points}.subspan(0, 6), tikhonov, 3, 100.f);
+
+			CHECK(err == IcpError::none);
+			CHECK(icp.correspondence_count(0) == 6);
+			CHECK(icp.obj_status(0) == ObjStatus::updated);
+			CHECK_FALSE(ApproxCheck{icp.obj_pose(0)} == ApproxCheck{seed});
+		}
 	}
 
 	TEST_CASE("information_matrix: 対称性") {
