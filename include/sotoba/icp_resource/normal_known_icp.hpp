@@ -126,6 +126,35 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 			return this->loop_count;
 		}
 
+		/// 直近の run_icp における、このオブジェクトの正規方程式の係数行列
+		/// A = Σ JᵀNJ (情報行列)。添字 0..2 が回転 w、3..5 が並進 t。
+		///
+		/// 対応点数での正規化も tikhonov 正則化も加えていない **生の総和**。
+		/// Σ/N が欲しければ correspondence_count(oid) で割ること。
+		/// 共分散は Cov ≒ σ² A⁻¹ で得られる (σ² はセンサの距離ノイズ分散で、
+		/// 呼び出し側が与える)。tikhonov を含めないのは、正則化が入ると
+		/// 縮退方向で不確かさを過小評価してしまうため。
+		///
+		/// 値は最後に回ったイテレーションのもの。last_loop_count() == 0 のとき
+		/// (max_loop_num == 0 を渡した場合、および IcpError::too_many_points で
+		/// 抜けた場合) は直前の run_icp の値が残っているので参照しないこと。
+		auto information_matrix(const u8 oid) const noexcept -> SymMat<6> {
+			SymMat<6> ret{};
+			for (u8 i = 0; i < 3; ++i)
+				for (u8 j = i; j < 3; ++j) {
+					ret[i, j] = this->a_w[oid][i, j];
+					ret[i + 3, j + 3] = this->a_t[oid][i, j];
+				}
+			for (u8 i = 0; i < 3; ++i)
+				for (u8 j = 0; j < 3; ++j) { ret[i, j + 3] = this->a_wt[oid][i, j]; }
+			return ret;
+		}
+
+		/// 同じく正規方程式の右辺 b = Σ JᵀNe。こちらも生の総和。
+		auto residual_vector(const u8 oid) const noexcept -> Vec6 {
+			return this->b[oid];
+		}
+
 		// 点が少なすぎて姿勢を更新しない対応点数の閾値。変更しないこと。
 		static constexpr usize min_correspondences = 3;
 
@@ -148,6 +177,11 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 		/// solve_failed の場合) は最大値が 0 のままなので、既定の
 		/// convergence_delta2 = 0.f でも1回で打ち切られる。姿勢が動かない以上
 		/// 回し続けても結果は変わらないため、これは意図した挙動。
+		///
+		/// 内部で組む正規方程式の係数行列と右辺は information_matrix() /
+		/// residual_vector() で取得できる。どちらも対応点数での正規化や
+		/// tikhonov 正則化を加える前の生の総和であり、ObjStatus によらず
+		/// 最後に回ったイテレーションの値になる。
 		auto run_icp(
 			std::span<const Vec3> point_cloud,
 			const Vec6& tikhonov,
@@ -252,14 +286,11 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 						this->obj_statuses[iobj] = ObjStatus::too_few_correspondences;
 						continue;
 					}
-					this->b[iobj] /= this->counts[iobj];
-					this->a_w[iobj] /= this->counts[iobj];
-					this->a_t[iobj] /= this->counts[iobj];
-					this->a_wt[iobj] /= this->counts[iobj];
-
-					// tikhonovを足す(nによらない)
-					this->a_w[iobj] += vec::diagonal_sym(tikhonov_w);
-					this->a_t[iobj] += vec::diagonal_sym(tikhonov_t);
+					// 正規化と tikhonov 正則化は Eigen 側を組むときにだけ適用する。
+					// a_w / a_t / a_wt / b は生の総和 (Σ) のまま残し、
+					// information_matrix() / residual_vector() から素の情報行列を
+					// 取れるようにする。
+					const float n = static_cast<float>(this->counts[iobj]);
 
 					// コレスキー分解、w, tを求める
 					using Matrix6f = Eigen::Matrix<float, 6, 6>;
@@ -267,11 +298,15 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 					Matrix6f a_tri;
 					for (u8 i = 0; i < 3; ++i)
 						for (u8 j = i; j < 3; ++j) {
-							a_tri(i, j) = this->a_w[iobj][i, j];
-							a_tri(i + 3, j + 3) = this->a_t[iobj][i, j];
+							a_tri(i, j) =
+								this->a_w[iobj][i, j] / n + (i == j ? tikhonov_w[i] : 0.f);
+							a_tri(i + 3, j + 3) =
+								this->a_t[iobj][i, j] / n + (i == j ? tikhonov_t[i] : 0.f);
 						}
 					for (u8 i = 0; i < 3; ++i)
-						for (u8 j = 0; j < 3; ++j) { a_tri(i, j + 3) = this->a_wt[iobj][i, j]; }
+						for (u8 j = 0; j < 3; ++j) {
+							a_tri(i, j + 3) = this->a_wt[iobj][i, j] / n;
+						}
 					const Matrix6f a = a_tri.selfadjointView<Eigen::Upper>();
 					Eigen::LLT<Matrix6f> cholesky(a);
 					if (cholesky.info() != Eigen::Success) {
@@ -280,7 +315,7 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 					}
 
 					Eigen::Vector<float, 6> b_;
-					for (u8 i = 0; i < 6; ++i) b_(i) = this->b[iobj][i];
+					for (u8 i = 0; i < 6; ++i) b_(i) = this->b[iobj][i] / n;
 
 					const auto x = cholesky.solve(b_);
 					const SE3 diff =
@@ -515,6 +550,7 @@ TEST_SUITE("normal_known_icp.hpp") {
 		CHECK(icp.qs[26].second == ObjSurfId::Null);
 		CHECK(icp.correspondence_count(0) <= 25);
 	}
+
 }
 
 #endif
