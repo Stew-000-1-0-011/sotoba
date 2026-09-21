@@ -15,10 +15,8 @@ project(sotoba_package_test LANGUAGES CXX)
 
 find_package(sotoba REQUIRED)
 
-# 注意: install(EXPORT ... NAMESPACE sotoba::) はターゲット名 sotoba_headers を
-# そのまま名前空間化するため、find_package(sotoba) 経由では
-# sotoba::sotoba_headers という名前になる (sotoba::sotoba ではない)。
-# sotoba::sotoba は add_subdirectory(sotoba) で使う場合のローカルエイリアス。
+# sotoba 側で EXPORT_NAME を揃えてあるので、find_package(sotoba) でも
+# add_subdirectory(sotoba) でも同じ sotoba::sotoba を書けばよい。
 add_executable(sotoba_package_test main.cpp)
-target_link_libraries(sotoba_package_test PRIVATE sotoba::sotoba_headers)
+target_link_libraries(sotoba_package_test PRIVATE sotoba::sotoba)
 target_compile_features(sotoba_package_test PRIVATE cxx_std_23)
