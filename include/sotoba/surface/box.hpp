@@ -142,9 +142,162 @@ namespace sotoba::surface::box_impl {
 	};
 
 	static_assert(surfacelike<BoxOuter>);
+
+	// センサ原点が直方体の内側にある前提で可視面を判定する直方体サーフェス。
+	// BoxOuter (外側から見る) の可視条件を反転し、法線を内向きにしたもの。
+	// 壁に囲まれたフィールドの内側を走行する構成で、囲い壁1個として使える。
+	struct BoxInner final {
+		Vec3 center;
+		u32 wall_exist;
+		SquareMat<3> rot; // world -> local の回転。行 i がローカル軸 i の world 表現
+		Vec3 hlens;
+
+		BoxInner(
+			const Vec3& center,
+			const SquareMat<3>& rot,
+			const Vec3& hlens,
+			const std::array<bool, 6> wall_not_exist = {}
+		) noexcept
+			: center{center}, wall_exist{}, rot{rot}, hlens{hlens} {
+			for (u8 i = 0; i < 6; ++i) wall_exist |= u32(wall_not_exist[i] ? 0 : 1) << i;
+		}
+
+		BoxInner(const BoxInner&) noexcept = default;
+		BoxInner(BoxInner&&) noexcept = default;
+		auto operator=(const BoxInner&) -> BoxInner& = default;
+		auto operator=(BoxInner&&) -> BoxInner& = default;
+
+		auto closest_pd(const Vec3& p) const noexcept -> Vec4 {
+			const Vec3 co_local = this->rot * -this->center;
+			const Vec3 cp_local = this->rot * (p - this->center);
+			Vec3 clamped_cp_local;
+			for (u8 i = 0; i < 3; ++i) {
+				clamped_cp_local[i] = math::clamp(cp_local[i], -this->hlens[i], this->hlens[i]);
+			}
+
+			Vec3 cq_local{};
+			float d = std::numeric_limits<float>::infinity();
+			for (u8 i = 0; i < 3; ++i) {
+				// -i 側の面 (ローカル座標 -hlens[i])。原点がこの面より内側にいるときだけ見える。
+				// BoxOuter とは異なり、両面が同時に可視になりうるので if/if にすること
+				// (else if にすると +i 側が永久に選ばれなくなる)。
+				if ((wall_exist & u32(1) << 2 * i) && -this->hlens[i] < co_local[i]) {
+					Vec3 cq_local_ = clamped_cp_local;
+					cq_local_[i] = -this->hlens[i];
+					if (const float d_ = vec::distance2(cq_local_, cp_local); d_ < d) {
+						d = d_;
+						cq_local = cq_local_;
+					}
+				}
+				// +i 側の面 (ローカル座標 +hlens[i])。
+				if ((wall_exist & u32(1) << (2 * i + 1)) && co_local[i] < this->hlens[i]) {
+					Vec3 cq_local_ = clamped_cp_local;
+					cq_local_[i] = this->hlens[i];
+					if (const float d_ = vec::distance2(cq_local_, cp_local); d_ < d) {
+						d = d_;
+						cq_local = cq_local_;
+					}
+				}
+			}
+
+			return {this->center + this->rot.transpose() * cq_local, Vec{d}};
+		}
+
+		auto closest_pdn(const Vec3& p) const noexcept -> std::pair<Vec4, UVec3> {
+			const Vec3 co_local = this->rot * -this->center;
+			const Vec3 cp_local = this->rot * (p - this->center);
+			Vec3 clamped_cp_local;
+			for (u8 i = 0; i < 3; ++i) {
+				clamped_cp_local[i] = math::clamp(cp_local[i], -this->hlens[i], this->hlens[i]);
+			}
+
+			Vec3 cq_local{};
+			UVec3 n{};
+			float d = std::numeric_limits<float>::infinity();
+			for (u8 i = 0; i < 3; ++i) {
+				// -i 側の面。内向き法線は +e_i = rot[i] (BoxOuter の外向き -rot[i] の逆)。
+				// if/if であること (BoxInner では両面が同時に可視になりうるため)。
+				if ((wall_exist & u32(1) << 2 * i) && -this->hlens[i] < co_local[i]) {
+					Vec3 cq_local_ = clamped_cp_local;
+					cq_local_[i] = -this->hlens[i];
+					if (const float d_ = vec::distance2(cq_local_, cp_local); d_ < d) {
+						d = d_;
+						n = this->rot[i];
+						cq_local = cq_local_;
+					}
+				}
+				// +i 側の面。内向き法線は -e_i = -rot[i]。
+				if ((wall_exist & u32(1) << (2 * i + 1)) && co_local[i] < this->hlens[i]) {
+					Vec3 cq_local_ = clamped_cp_local;
+					cq_local_[i] = this->hlens[i];
+					if (const float d_ = vec::distance2(cq_local_, cp_local); d_ < d) {
+						d = d_;
+						n = -this->rot[i];
+						cq_local = cq_local_;
+					}
+				}
+			}
+
+			return {{this->center + this->rot.transpose() * cq_local, Vec{d}}, n};
+		}
+
+		void apply_se3(const SE3& h) noexcept {
+			this->center = h.app_v(this->center);
+			for (u8 i = 0; i < 3; ++i) {
+				const UVec3 new_axis = h.app_uv(vec::as_uvec(this->rot[i]));
+				for (u8 j = 0; j < 3; ++j) this->rot[i, j] = new_axis[j];
+			}
+		}
+
+		// Slabs法。BoxOuter は t_enter (外から入る点) を返すが、
+		// BoxInner は内側から見るので t_exit (内側から出ていく点) を返す。
+		// 出ていく面が wall_exist で存在しない場合、レイはそのまま抜けるので
+		// 無限大を返す (BoxOuter の ray_collision は wall_exist を見ないが、
+		// BoxInner では見ること)。
+		auto ray_collision(const UVec3& ray) const noexcept -> float {
+			const Vec3 co_local = this->rot * -this->center;
+			float t_enter = -std::numeric_limits<float>::infinity();
+			float t_exit = std::numeric_limits<float>::infinity();
+			i32 exit_axis = -1;
+			bool exit_is_plus = false;
+			for (u8 i = 0; i < 3; ++i) {
+				const Vec3 axis = this->rot[i];
+				const float ray_d = vec::dot(ray, axis);
+				if (math::fabs(ray_d) < math::epsilon) {
+					// レイがこのスラブに平行。原点がスラブ外なら交差しない。
+					if (!(-hlens[i] < co_local[i] && co_local[i] < hlens[i]))
+						return std::numeric_limits<float>::infinity();
+					else continue;
+				}
+
+				const float t1 = (-this->hlens[i] - co_local[i]) / ray_d; // -i 側の面
+				const float t2 = (this->hlens[i] - co_local[i]) / ray_d; // +i 側の面
+				const auto [tmin, tmax] = std::minmax(t1, t2);
+				t_enter = std::max(t_enter, tmin);
+				if (tmax < t_exit) {
+					t_exit = tmax;
+					exit_axis = i32(i);
+					exit_is_plus = !(t2 < t1); // tmax が t2 由来なら +i 側の面
+				}
+			}
+
+			if (exit_axis < 0) return std::numeric_limits<float>::infinity();
+			if (t_exit < math::epsilon || t_exit < t_enter)
+				return std::numeric_limits<float>::infinity();
+
+			// 出ていく面が存在しなければレイは抜ける
+			const u32 exit_bit = u32(1) << (2 * u32(exit_axis) + (exit_is_plus ? 1 : 0));
+			if (!(this->wall_exist & exit_bit)) return std::numeric_limits<float>::infinity();
+
+			return math::pow2(t_exit);
+		}
+	};
+
+	static_assert(surfacelike<BoxInner>);
 } // namespace sotoba::surface::box_impl
 
 namespace sotoba::surface {
+	using box_impl::BoxInner;
 	using box_impl::BoxOuter;
 }
 
