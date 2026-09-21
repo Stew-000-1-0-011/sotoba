@@ -90,14 +90,9 @@ namespace sotoba::math {
 			return ret;
 		}
 
-#ifndef sotoba_USE_SYCL
 		template <bool is_unit_>
 		constexpr friend auto operator*(const SquareMat& lhs, const Vec<d_, is_unit_>& rhs) noexcept
 			-> Vec<d_, false>
-#else
-		constexpr friend auto operator*(const SquareMat& lhs, const Vec<d_>& rhs) noexcept
-			-> Vec<d_, false>
-#endif
 		{
 			Vec<d_, false> ret{};
 			for (u8 i = 0; i < d_; ++i)

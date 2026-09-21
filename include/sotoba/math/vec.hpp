@@ -4,7 +4,6 @@
 #include <type_traits>
 #include <utility>
 
-#include "sotoba/use_sycl.hpp"
 
 #include "epsilon.hpp"
 #include "scalar_functions.hpp"
@@ -12,7 +11,6 @@
 #include "sym_mat.hpp"
 #include "vec_forward_decl.hpp"
 
-#ifndef sotoba_USE_SYCL
 namespace sotoba::math::vec_impl {
 	template <u8 n_, bool is_unit_>
 	struct Vec final {
@@ -274,10 +272,8 @@ namespace sotoba::math::vec_impl {
 		}
 	} // namespace vec_functions
 } // namespace sotoba::math::vec_impl
-#endif
 
 namespace sotoba {
-#ifndef sotoba_USE_SYCL
 	template <u8 n_, bool is_unit_>
 	struct Repr<math::Vec<n_, is_unit_>> final {
 		static auto repr(const math::Vec<n_, is_unit_>& self) noexcept -> std::string {
@@ -287,94 +283,10 @@ namespace sotoba {
 			return ret;
 		}
 	};
-#else
-	template <int n_>
-	struct Repr<math::Vec<n_>> final {
-		static auto repr(const math::Vec<n_>& self) noexcept -> std::string {
-			std::string ret = std::format("Vec<{}>{{", n_);
-			for (int i = 0; i < n_; ++i) ret += std::format("{}, ", self[i]);
-			ret += '}';
-			return ret;
-		}
-	};
-#endif
 } // namespace sotoba
 
 namespace sotoba::math {
-#ifndef sotoba_USE_SYCL
 	namespace vec = vec_impl::vec_functions;
-#else
-	namespace vec {
-		using sycl::cross;
-		using sycl::dot;
-		using sycl::fast_length;
-		using sycl::fast_normalize;
-
-		template <int n_>
-		inline constexpr auto as_uvec(const Vec<n_>& v) noexcept -> Vec<n_> {
-			return v;
-		}
-
-		template <int n_>
-		inline constexpr auto dyad(const Vec<n_>& lhs, const Vec<n_>& rhs) noexcept
-			-> SquareMat<n_> {
-			SquareMat<n_> ret{};
-			for (u8 i = 0; i < n_; ++i)
-				for (u8 j = 0; j < n_; ++j) { ret[i, j] = lhs[i] * rhs[j]; }
-
-			return ret;
-		}
-
-		template <int n_>
-		inline constexpr auto self_dyad(const Vec<n_>& v) noexcept -> SymMat<n_> {
-			SymMat<n_> ret{};
-			u8 k = 0;
-			for (u8 i = 0; i < n_; ++i)
-				for (u8 j = i; j < n_; ++j) { ret.v[k++] = v[i] * v[j]; }
-
-			return ret;
-		}
-
-		template <int n_>
-		inline constexpr auto distance2(const Vec<n_>& lhs, const Vec<n_>& rhs) noexcept -> float {
-			const auto diff = lhs - rhs;
-			return dot(diff, diff);
-		}
-
-		template <int begin_, int end_, int n_>
-			requires(begin_ < end_)
-		inline constexpr auto split(const Vec<n_>& v) noexcept -> Vec<end_ - begin_> {
-			Vec<end_ - begin_> ret;
-			for (int i = begin_; i < end_; ++i) ret[i - begin_] = v[i];
-			return ret;
-		}
-
-		template <int n_>
-		inline constexpr auto diagonal(const Vec<n_>& diag) noexcept -> SquareMat<n_> {
-			SquareMat<n_> ret{};
-			for (u8 i = 0; i < n_; ++i) ret[i, i] = diag[i];
-			return ret;
-		}
-
-		template <int n_>
-		inline constexpr auto diagonal_sym(const Vec<n_>& diag) noexcept -> SymMat<n_> {
-			SymMat<n_> ret{};
-			u8 k = 0;
-			for (u8 i = 0; i < n_; ++i) {
-				ret.v[k] = diag[i];
-				k += (n_ - i);
-			}
-			return ret;
-		}
-
-		template <int n_>
-		inline constexpr auto isfinite(const Vec<n_>& v) noexcept -> bool {
-			for (u8 i = 0; i < n_; ++i)
-				if (!math::isfinite(v[i])) return false;
-			return true;
-		}
-	} // namespace vec
-#endif
 } // namespace sotoba::math
 
 #ifdef sotoba_ENABLE_TESTING
@@ -386,7 +298,6 @@ namespace sotoba::math {
 
 namespace sotoba::math {
 	// doctest で Vec を比較するためのヘルパー関数
-	#ifndef sotoba_USE_SYCL
 	template <u8 n_, bool is_unit_>
 	struct ApproxCheckImpl<Vec<n_, is_unit_>> final {
 		static auto compare(
@@ -394,12 +305,6 @@ namespace sotoba::math {
 			const Vec<n_, is_unit_>& v2,
 			const std::optional<float> eps
 		) -> bool
-	#else
-	template <int n_>
-	struct ApproxCheckImpl<Vec<n_>> final {
-		static auto compare(const Vec<n_>& v1, const Vec<n_>& v2, const std::optional<float> eps)
-			-> bool
-	#endif
 		{
 			for (u8 i = 0; i < n_; ++i) {
 				if (v1[i] != (eps ? doctest::Approx(v2[i]).epsilon(*eps) : doctest::Approx(v2[i])))
@@ -413,7 +318,6 @@ namespace sotoba::math {
 TEST_SUITE("vec.hpp") {
 	using namespace sotoba::math;
 
-	#ifndef sotoba_USE_SYCL
 	TEST_CASE("Vec Constructors") {
 		using Vec1 = Vec<1, false>;
 		using Vec2 = Vec<2, false>;
@@ -625,7 +529,6 @@ TEST_SUITE("vec.hpp") {
 			CHECK(ApproxCheck{uv_zero} == ApproxCheck{Vec3{0.f, 0.f, 0.f}}); // ゼロベクトルが返る
 		}
 	}
-	#endif
 
 	TEST_CASE("sotoba-used") {
 		constexpr Vec3 v1({1.f, 2.f, 3.f});

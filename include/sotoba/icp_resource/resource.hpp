@@ -19,14 +19,33 @@ namespace sotoba::icp_resource::resource_impl {
 	using surface::ExplanationOnlySurface;
 	using surface::surfacelike;
 
+	/// run_icp の呼び出し自体の成否。
+	enum class IcpError : u8 {
+		none = 0,
+		/// 点数が points_capacity() を超えている。再確保はしない。
+		too_many_points,
+		invalid_weighting,
+		invalid_accept_schedule,
+	};
+
+	/// オブジェクトごとの、直近の run_icp における姿勢更新の結果。
+	enum class ObjStatus : u8 {
+		not_run = 0,
+		updated,
+		/// 姿勢は run_icp 呼び出し時の値のまま。
+		too_few_correspondences,
+		/// 姿勢は直前の値のまま。
+		solve_failed,
+	};
+
 	template <class T_, class... Ss_>
 	concept icp_resource = (surfacelike<Ss_> && ...)
 		&& requires(T_ mut,
 					const T_ imut,
 					std::tuple<std::vector<Ss_>...> surfs,
-					std::array<std::vector<ObjSurfId>, 2> osids,
+					std::array<std::vector<ObjSurfId>, sizeof...(Ss_)> osids,
 					u8 obj_num,
-					u8 points_num,
+					usize points_num,
 					u8 oid) {
 			   { T_{std::move(surfs), std::move(osids), obj_num, points_num} };
 			   { mut.obj_pose(oid) } -> std::convertible_to<SE3&>;
@@ -76,5 +95,7 @@ namespace sotoba::icp_resource::resource_impl {
 
 namespace sotoba::icp_resource {
 	using resource_impl::icp_resource;
+	using resource_impl::IcpError;
+	using resource_impl::ObjStatus;
 	using resource_impl::to_resource;
 } // namespace sotoba::icp_resource

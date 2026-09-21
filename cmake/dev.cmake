@@ -11,7 +11,7 @@ block(PROPAGATE install_example_target_list)
 			PRIVATE
 				${PROJECT_NAME}_dep_private
 				${PROJECT_NAME}_dep_export
-				${PROJECT_NAME}_dev_dep
+				${PROJECT_NAME}_test_dep
 				${PROJECT_NAME}_lib
 				${PROJECT_NAME}_build_private
 				${PROJECT_NAME}_build_export
@@ -35,6 +35,9 @@ block(PROPAGATE install_example_target_list)
 
 
 	# --- examplesのビルド ---
+	# BUILD_EXAMPLES=OFF のときは Pangolin 自体を FetchContent していない
+	# (CMakeLists.txt 側) ので、examples のビルドも丸ごとスキップする。
+	if(BUILD_EXAMPLES)
 	file(GLOB exam_entries CONFIGURE_DEPENDS "examples/*")
 	if(exam_entries)
 		foreach(exam_entry ${exam_entries})
@@ -51,7 +54,7 @@ block(PROPAGATE install_example_target_list)
 					PRIVATE
 						${PROJECT_NAME}_dep_private
 						${PROJECT_NAME}_dep_export
-						${PROJECT_NAME}_dev_dep
+						${PROJECT_NAME}_example_dep
 						${PROJECT_NAME}_lib
 						${PROJECT_NAME}_build_private
 						${PROJECT_NAME}_build_export
@@ -72,7 +75,7 @@ block(PROPAGATE install_example_target_list)
 					PRIVATE
 						${PROJECT_NAME}_dep_private
 						${PROJECT_NAME}_dep_export
-						${PROJECT_NAME}_dev_dep
+						${PROJECT_NAME}_example_dep
 						${PROJECT_NAME}_lib
 						${PROJECT_NAME}_build_private
 						${PROJECT_NAME}_build_export
@@ -86,5 +89,6 @@ block(PROPAGATE install_example_target_list)
 		endforeach()
 	add_custom_target(${PROJECT_NAME}_examples)
 	add_dependencies(${PROJECT_NAME}_examples ${install_example_target_list})
+	endif()
 	endif()
 endblock()
