@@ -62,9 +62,7 @@ int main() {
 	// 	UVec3{0.0f, 1.0f, 0.0f}      // normal (Y軸)
 	// ));
 
-	// 外側を囲う大きな囲い。
-	// 内向き法線の Rectangle 6枚と等価だが、BoxInner なら1個で書ける
-	// (BoxOuter はセンサ原点が外側にある前提なので、囲いには使えない)。
+	// 外側を囲う大きな囲い
 	environment_storage.emplace_back(
 		surface::BoxInner(
 			Vec3{0.f, 0.f, 0.f}, // center
