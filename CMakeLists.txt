@@ -7,9 +7,6 @@ project(sotoba
 )
 
 # --- オプション ---
-option(BUILD_STATIC_LIB "build static_lib" ON)
-option(BUILD_SHARED_LIB "build shared_lib" ON)
-option(BUILD_MODULE_LIB "build module_lib" ON)
 option(BUILD_DEVS "Build devs" OFF)
 option(BUILD_EXAMPLES "Build examples (needs Pangolin, only meaningful when BUILD_DEVS=ON)" ON)
 set(RELEASE_OPTIMIZE -O2 CACHE STRING "The compiler option for optimization, e.g. -O2 or -Os")
@@ -83,12 +80,9 @@ target_link_libraries(${PROJECT_NAME}_dep_export
 
 
 # --- 各種ターゲットを作成 ---
-set(install_target_list "")
-
 include(cmake/common.cmake)
 
 include(cmake/lib.cmake)
-# include(cmake/bin.cmake)
 
 
 # --- find_package(sotoba) 用のクリーンな INTERFACE ターゲット ---
@@ -173,16 +167,6 @@ endif()
 
 # --- インストール設定 ---
 # (GNUInstallDirs は sotoba_headers ターゲット定義のために既に include 済み)
-
-message("install_target_list: ${install_target_list}")
-if(install_target_list)
-	install(TARGETS
-		${install_target_list}
-		ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/${PROJECT_NAME}
-		LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/${PROJECT_NAME}
-		RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}/${PROJECT_NAME}
-	)
-endif()
 
 if(BUILD_DEVS AND BUILD_EXAMPLES AND install_example_target_list)
 	install(TARGETS
