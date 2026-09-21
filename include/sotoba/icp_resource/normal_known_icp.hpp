@@ -187,7 +187,7 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 		/// 以下は何も行わずに返し、姿勢・状態とも変化しない:
 		/// - point_cloud.size() > points_capacity() → too_many_points (再確保しない)
 		/// - weighting が不正 → invalid_weighting
-		/// - accept_distance2_begin が非有限、または accept_distance2 より小さい
+		/// - accept_distance2_begin が非有限、または正だが accept_distance2 より小さい
 		///   → invalid_accept_schedule
 		auto run_icp(
 			std::span<const Vec3> point_cloud,
