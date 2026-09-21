@@ -1,9 +1,11 @@
 #include <chrono>
 #include <concepts>
+#include <cstdio>
 #include <limits>
 #include <numbers>
 #include <print>
 #include <random>
+#include <span>
 #include <thread>
 #include <variant>
 
@@ -237,7 +239,11 @@ int main() {
 
 		// ICP
 		{
-			icp.run_icp(std::vector{point_cloud}, tikhnov, loop_num, pow2(accept_distance));
+			const auto icp_err =
+				icp.run_icp(std::span{point_cloud}, tikhnov, loop_num, pow2(accept_distance));
+			if (icp_err != icp_resource::IcpError::none) {
+				std::println(stderr, "run_icp failed: too_many_points");
+			}
 			for (u8 iobj = 0; iobj < objects.size(); ++iobj) {
 				estimated_poses[iobj] = icp.obj_poses[iobj];
 			}
