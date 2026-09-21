@@ -4,8 +4,6 @@
 ROOT_DIR=$(git rev-parse --show-toplevel)
 cd "$ROOT_DIR" || exit 1
 
-. source_setvars.bash
-
 # フォーマットのチェック
 echo "Checking code formatting..." >&2
 # 対象の拡張子 (.c, .cpp, .h, .hpp など)
@@ -40,8 +38,6 @@ TEST_DIRS=(
 	"clang_build/Release/"
 	"gcc_build/Debug/"
 	"gcc_build/Release/"
-	"icpx_build/Debug/"
-	"icpx_build/Release/"
 )
 
 echo "Running tests..." >&2

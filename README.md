@@ -4,7 +4,7 @@
 図形が少ないなら割と高速。  
 数個のオブジェクトのフィッティングができるので、自己位置推定しながらボールの認識をする...とかもできるはず。
 
-SVDによるICPとPoint-to-PlaneのICPを実装。
+Point-to-PlaneのICPを実装。
 
 ## 使い方
 まだfind_packageできるようにはなってない。
@@ -20,9 +20,6 @@ cd <このリポジトリ>
 # ビルドしたいもの以外をコメントアウトしたりBUILD_DEVSをOFFにしてね
 nano build.bash
 
-# icpxに関連するビルド/テストの実行前には`/opt/intel/oneapi/setvars.sh`か以下をソースしてね
-. source_setvars.bash
-
 # ビルド
 . build.bash
 
@@ -32,8 +29,7 @@ nano build.bash
 # ビルドのクリーン
 . clean.bash
 
-# examplesの実行(gcc_build, icpx_buildでも同様)
-./clang_build/Release/examples/svd_simulation < svd_simulation.txt
+# examplesの実行(gcc_buildでも同様)
 ./clang_build/Release/examples/normal_known_simulation < normal_known_simulation.txt
 ```
 

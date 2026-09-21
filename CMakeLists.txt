@@ -63,26 +63,6 @@ target_link_libraries(${PROJECT_NAME}_dep_private
 	INTERFACE
 		Eigen3::Eigen
 )
-if(CMAKE_CXX_COMPILER MATCHES "icpx")
-	target_compile_definitions(${PROJECT_NAME}_dep_private
-		INTERFACE
-			${PROJECT_NAME}_USE_SYCL
-			SYCL2020_DISABLE_DEPRECATION_WARNINGS  #どうもコンパイラ内で処理されていそう？ソースコードで定義しても効果なかった
-			SYCL_SIMPLE_SWIZZLES
-	)
-	target_compile_options(${PROJECT_NAME}_dep_private
-		INTERFACE
-			-fsycl
-	)
-	target_link_options(${PROJECT_NAME}_dep_private
-		INTERFACE
-			-fsycl
-	)
-	target_include_directories(${PROJECT_NAME}_dep_private
-		INTERFACE
-			/opt/intel/oneapi/2025.3/include/
-	)
-endif()
 
 add_library(${PROJECT_NAME}_dep_export INTERFACE EXCLUDE_FROM_ALL)
 target_link_libraries(${PROJECT_NAME}_dep_export
@@ -95,17 +75,6 @@ target_link_libraries(${PROJECT_NAME}_dep_export
 set(install_target_list "")
 
 include(cmake/common.cmake)
-
-if(CMAKE_CXX_COMPILER MATCHES "icpx")
-	target_compile_options(${PROJECT_NAME}_build_debug_export
-		INTERFACE
-		-fno-sanitize=all
-	)
-	target_link_options(${PROJECT_NAME}_build_debug_export
-		INTERFACE
-		-fno-sanitize=all
-	)
-endif()
 
 include(cmake/lib.cmake)
 # include(cmake/bin.cmake)

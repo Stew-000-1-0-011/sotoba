@@ -28,16 +28,3 @@ cmake -B gcc_build/Release/ -GNinja -DCMAKE_PREFIX_PATH=../install -DCMAKE_INSTA
 cmake --build gcc_build/Release/
 cmake --build gcc_build/Release/ --target sotoba_examples
 cmake --build gcc_build/Release/ --target sotoba_tests
-
-# icpx
-echo "build icpx-debug" >&2
-cmake -B icpx_build/Debug/ -GNinja -DCMAKE_PREFIX_PATH=../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=icpx -DCMAKE_BUILD_TYPE=Debug -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
-cmake --build icpx_build/Debug/
-cmake --build icpx_build/Debug/ --target sotoba_examples
-cmake --build icpx_build/Debug/ --target sotoba_tests
-
-echo "build icpx-release" >&2
-cmake -B icpx_build/Release/ -GNinja -DCMAKE_PREFIX_PATH=../install -DCMAKE_INSTALL_PREFIX=install -DCMAKE_CXX_COMPILER=icpx -DCMAKE_BUILD_TYPE=Release -DRELEASE_OPTIMIZE=-O2 -DBUILD_DEVS=ON
-cmake --build icpx_build/Release/
-cmake --build icpx_build/Release/ --target sotoba_examples
-cmake --build icpx_build/Release/ --target sotoba_tests
