@@ -8,7 +8,6 @@
 #include "sotoba/surface/surface.hpp"
 
 namespace sotoba::cylinder_impl {
-	using math::SE3;
 	using math::UVec3;
 	using math::Vec;
 	using math::Vec3;
@@ -75,9 +74,9 @@ namespace sotoba::cylinder_impl {
 			return {{q, Vec{vec::dot(pq, pq)}}, n};
 		}
 
-		void apply_se3(const SE3& h) noexcept {
-			this->center = h.app_v(this->center);
-			this->axis = h.app_uv(this->axis);
+		void apply_se3(const Sophus::SE3f& h) noexcept {
+			this->center = math::app_v(h, this->center);
+			this->axis = math::app_uv(h, this->axis);
 		}
 
 		auto ray_collision(const UVec3& ray) const noexcept -> float {
@@ -128,14 +127,11 @@ namespace sotoba::surface {
 
 TEST_SUITE("cylinder.hpp") {
 	using namespace sotoba;
-	using math::SE3;
-	using math::UQuaternion;
 	using math::UVec3;
 	using math::Vec;
 	using math::Vec3;
 	using math::Vec4;
 	using sotoba::surface::CylinderOuter;
-	namespace quaternion = math::quaternion;
 	using sotoba::math::ApproxCheck;
 
 	// 共通セットアップ: 原点からZ方向に離れた、Y軸平行の円筒
@@ -255,10 +251,10 @@ TEST_SUITE("cylinder.hpp") {
 
 		// Z軸90度回転 (Roll=0, Pitch=0, Yaw=90deg)
 		const float pi_2 = std::numbers::pi_v<float> / 2.0f;
-		const auto rot = SE3::rot(quaternion::ypr({0.0f, 0.0f, pi_2}));
+		const auto rot = math::rot(math::ypr({0.0f, 0.0f, pi_2}));
 
 		// 平行移動 (5, 0, 10)
-		const auto trans = SE3::trans(Vec3{5.0f, 0.0f, 10.0f});
+		const auto trans = math::trans(Vec3{5.0f, 0.0f, 10.0f});
 
 		// 適用 (Trans * Rot の順序を想定、ライブラリの乗算仕様によるが通常は左から適用)
 		// ここでは個別に適用して動作を確認

@@ -18,7 +18,6 @@
 #include "sotoba/stdtypes.hpp"
 #include "sotoba/surf_obj_id.hpp"
 
-#include "sotoba/math/quaternion.hpp"
 #include "sotoba/math/se3.hpp"
 #include "sotoba/math/square_mat.hpp"
 #include "sotoba/math/vec.hpp"
@@ -27,7 +26,6 @@
 #include "resource.hpp"
 
 namespace sotoba::icp_resource::normal_known_icp_impl {
-	using math::SE3;
 	using math::SquareMat;
 	using math::SymMat;
 	using math::UVec3;
@@ -74,7 +72,7 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 		std::vector<float> weight_sums;
 
 		// ここに入れた姿勢をもとに、ICPがはしり、補正された結果がここに入る
-		std::vector<SE3> obj_poses;
+		std::vector<Sophus::SE3f> obj_poses;
 
 		std::vector<ObjStatus> obj_statuses;
 		u32 loop_count;
@@ -117,7 +115,7 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 			this->a_wt.resize(obj_num);
 			this->counts.resize(obj_num);
 			this->weight_sums.resize(obj_num, 0.f);
-			this->obj_poses.resize(obj_num, SE3::ide());
+			this->obj_poses.resize(obj_num, Sophus::SE3f{});
 			this->obj_statuses.resize(obj_num, ObjStatus::not_run);
 		}
 
@@ -375,11 +373,12 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 					for (u8 i = 0; i < 6; ++i) b_(i) = this->b[iobj][i] / n;
 
 					const auto x = cholesky.solve(b_);
-					const SE3 diff =
-						SE3{math::UQuaternion{vec::fast_normalize(Vec4{x[0], x[1], x[2], 2.f})},
-							{x[3], x[4], x[5]}};
+					// 不変条件: Sophus の Tangent は (upsilon, omega) = (並進, 回転)。x は (w, t) の順
+					Sophus::SE3f::Tangent xi;
+					xi << x[3], x[4], x[5], x[0], x[1], x[2];
 
-					this->obj_poses[iobj] = (diff * this->obj_poses[iobj]).normalize();
+					this->obj_poses[iobj] = Sophus::SE3f::exp(xi) * this->obj_poses[iobj];
+					this->obj_poses[iobj].so3().normalize();
 					this->obj_statuses[iobj] = ObjStatus::updated;
 
 					const Vec3 w{x[0], x[1], x[2]};
@@ -436,7 +435,6 @@ namespace sotoba::icp_resource {
 
 TEST_SUITE("normal_known_icp.hpp") {
 	using namespace sotoba;
-	using math::SE3;
 	using math::UVec3;
 	using math::Vec;
 	using math::Vec3;
@@ -483,12 +481,12 @@ TEST_SUITE("normal_known_icp.hpp") {
 		};
 	}
 
-	inline auto sample_points(const SE3& true_pose) -> std::vector<Vec3> {
+	inline auto sample_points(const Sophus::SE3f& true_pose) -> std::vector<Vec3> {
 		std::vector<Vec3> pts;
 		for (int iu = -2; iu <= 2; ++iu) {
 			for (int iv = -2; iv <= 2; ++iv) {
 				const Vec3 local{float(iu) * 0.7f, float(iv) * 0.35f, 0.f};
-				pts.push_back(true_pose.app_v(local));
+				pts.push_back(math::app_v(true_pose, local));
 			}
 		}
 		return pts;
@@ -496,7 +494,7 @@ TEST_SUITE("normal_known_icp.hpp") {
 
 	TEST_CASE("run_icp: 点数がちょうど容量ならIcpError::noneが返る") {
 		auto icp = make_icp(forward_rect(), 25);
-		const auto points = sample_points(SE3::trans(Vec3{0.f, 0.f, 5.f}));
+		const auto points = sample_points(math::trans(Vec3{0.f, 0.f, 5.f}));
 		REQUIRE(points.size() == 25);
 
 		const auto err = icp.run_icp(std::span{points}, Vec6{}, 1, 100.f);
@@ -506,10 +504,10 @@ TEST_SUITE("normal_known_icp.hpp") {
 
 	TEST_CASE("run_icp: 点数が容量を1つでも超えるとtoo_many_pointsが返り状態が不変") {
 		auto icp = make_icp(forward_rect(), 24);
-		const auto points = sample_points(SE3::trans(Vec3{0.f, 0.f, 5.f}));
+		const auto points = sample_points(math::trans(Vec3{0.f, 0.f, 5.f}));
 		REQUIRE(points.size() == 25);
 
-		const SE3 seed = SE3::trans(Vec3{0.1f, 0.f, 4.5f});
+		const Sophus::SE3f seed = math::trans(Vec3{0.1f, 0.f, 4.5f});
 		icp.obj_pose(0) = seed;
 
 		const auto err = icp.run_icp(std::span{points}, Vec6{}, 5, 100.f);
@@ -522,9 +520,9 @@ TEST_SUITE("normal_known_icp.hpp") {
 
 	TEST_CASE("run_icp: max_loop_num=0なら姿勢が変化せず回った回数は0") {
 		auto icp = make_icp(forward_rect(), 25);
-		const auto points = sample_points(SE3::trans(Vec3{0.f, 0.f, 5.f}));
+		const auto points = sample_points(math::trans(Vec3{0.f, 0.f, 5.f}));
 
-		const SE3 seed = SE3::trans(Vec3{0.1f, 0.f, 4.5f});
+		const Sophus::SE3f seed = math::trans(Vec3{0.1f, 0.f, 4.5f});
 		icp.obj_pose(0) = seed;
 
 		const auto err = icp.run_icp(std::span{points}, Vec6{}, 0, 100.f);
@@ -536,8 +534,8 @@ TEST_SUITE("normal_known_icp.hpp") {
 
 	TEST_CASE("run_icp: 回った回数は常にmax_loop_num以下") {
 		auto icp = make_icp(forward_rect(), 25);
-		const auto points = sample_points(SE3::trans(Vec3{0.f, 0.f, 5.f}));
-		icp.obj_pose(0) = SE3::trans(Vec3{0.f, 0.f, 4.5f});
+		const auto points = sample_points(math::trans(Vec3{0.f, 0.f, 5.f}));
+		icp.obj_pose(0) = math::trans(Vec3{0.f, 0.f, 4.5f});
 
 		const Vec6 tikhonov{0.01f, 0.01f, 0.01f, 0.01f, 0.01f, 0.01f};
 		constexpr u32 max_loop_num = 50;
@@ -549,8 +547,8 @@ TEST_SUITE("normal_known_icp.hpp") {
 
 	TEST_CASE("run_icp: convergence_delta2を大きく与えるとmax_loop_numより少ない回数で打ち切られる") {
 		auto icp = make_icp(forward_rect(), 25);
-		const auto points = sample_points(SE3::trans(Vec3{0.f, 0.f, 5.f}));
-		icp.obj_pose(0) = SE3::trans(Vec3{0.f, 0.f, 4.5f});
+		const auto points = sample_points(math::trans(Vec3{0.f, 0.f, 5.f}));
+		icp.obj_pose(0) = math::trans(Vec3{0.f, 0.f, 4.5f});
 
 		const Vec6 tikhonov{0.01f, 0.01f, 0.01f, 0.01f, 0.01f, 0.01f};
 		constexpr u32 max_loop_num = 50;
@@ -563,10 +561,10 @@ TEST_SUITE("normal_known_icp.hpp") {
 
 	TEST_CASE("run_icp: 既知形状に対しずらしたシードが正解姿勢へ近づく") {
 		auto icp = make_icp(forward_rect(), 25);
-		const SE3 true_pose = SE3::trans(Vec3{0.f, 0.f, 5.f});
+		const Sophus::SE3f true_pose = math::trans(Vec3{0.f, 0.f, 5.f});
 		const auto points = sample_points(true_pose);
 
-		const SE3 seed = SE3::trans(Vec3{0.f, 0.f, 4.5f});
+		const Sophus::SE3f seed = math::trans(Vec3{0.f, 0.f, 4.5f});
 		icp.obj_pose(0) = seed;
 
 		const Vec6 tikhonov{0.001f, 0.001f, 0.001f, 0.001f, 0.001f, 0.001f};
@@ -575,8 +573,9 @@ TEST_SUITE("normal_known_icp.hpp") {
 		CHECK(err == IcpError::none);
 		CHECK(icp.obj_status(0) == ObjStatus::updated);
 
-		const float seed_err = std::fabs(seed.p.z() - true_pose.p.z());
-		const float result_err = std::fabs(icp.obj_pose(0).p.z() - true_pose.p.z());
+		const float seed_err = std::fabs(seed.translation().z() - true_pose.translation().z());
+		const float result_err =
+			std::fabs(icp.obj_pose(0).translation().z() - true_pose.translation().z());
 		CHECK(result_err < seed_err);
 		CHECK(result_err < 0.05f);
 	}
@@ -590,7 +589,7 @@ TEST_SUITE("normal_known_icp.hpp") {
 			Vec3{0.f, 0.f, 4.f},
 		};
 
-		const SE3 seed = SE3::trans(Vec3{1.f, 2.f, 3.f});
+		const Sophus::SE3f seed = math::trans(Vec3{1.f, 2.f, 3.f});
 		icp.obj_pose(0) = seed;
 
 		const auto err = icp.run_icp(std::span{points}, Vec6{}, 5, 100.f);
@@ -603,12 +602,12 @@ TEST_SUITE("normal_known_icp.hpp") {
 
 	TEST_CASE("run_icp: 非有限な点が混ざってもクラッシュせず対応点として採用されない") {
 		auto icp = make_icp(forward_rect(), 27);
-		auto points = sample_points(SE3::trans(Vec3{0.f, 0.f, 5.f})); // 25点
+		auto points = sample_points(math::trans(Vec3{0.f, 0.f, 5.f})); // 25点
 		points.push_back(Vec3{std::numeric_limits<float>::quiet_NaN(), 0.f, 0.f});
 		points.push_back(Vec3{std::numeric_limits<float>::infinity(), 0.f, 0.f});
 		REQUIRE(points.size() == 27);
 
-		icp.obj_pose(0) = SE3::trans(Vec3{0.f, 0.f, 4.5f});
+		icp.obj_pose(0) = math::trans(Vec3{0.f, 0.f, 4.5f});
 
 		const Vec6 tikhonov{0.01f, 0.01f, 0.01f, 0.01f, 0.01f, 0.01f};
 		const auto err = icp.run_icp(std::span{points}, tikhonov, 3, 100.f);
@@ -620,8 +619,8 @@ TEST_SUITE("normal_known_icp.hpp") {
 	}
 
 	TEST_CASE("information_matrix: tikhonovを変えても値が変わらない(正則化が焼き込まれていないこと)") {
-		const auto points = sample_points(SE3::trans(Vec3{0.f, 0.f, 5.f}));
-		const SE3 seed = SE3::trans(Vec3{0.05f, 0.f, 4.5f});
+		const auto points = sample_points(math::trans(Vec3{0.f, 0.f, 5.f}));
+		const Sophus::SE3f seed = math::trans(Vec3{0.05f, 0.f, 4.5f});
 
 		auto icp_zero = make_icp(forward_rect(), 25);
 		icp_zero.obj_pose(0) = seed;
@@ -646,13 +645,13 @@ TEST_SUITE("normal_known_icp.hpp") {
 	TEST_CASE("run_icp: 対応点が min_correspondences 未満なら姿勢を更新しない") {
 		static_assert(NormalKnownResource<Rectangle>::min_correspondences == 6);
 
-		const SE3 true_pose = SE3::trans(Vec3{0.f, 0.f, 5.f});
+		const Sophus::SE3f true_pose = math::trans(Vec3{0.f, 0.f, 5.f});
 		const auto points = sample_points(true_pose); // 25点
 		const Vec6 tikhonov{0.01f, 0.01f, 0.01f, 0.01f, 0.01f, 0.01f};
 
 		SUBCASE("5点では更新されず、姿勢は呼び出し時の値のまま") {
 			auto icp = make_icp(forward_rect(), 25);
-			const SE3 seed = SE3::trans(Vec3{0.f, 0.f, 4.9f});
+			const Sophus::SE3f seed = math::trans(Vec3{0.f, 0.f, 4.9f});
 			icp.obj_pose(0) = seed;
 
 			const auto err =
@@ -666,7 +665,7 @@ TEST_SUITE("normal_known_icp.hpp") {
 
 		SUBCASE("6点なら更新される") {
 			auto icp = make_icp(forward_rect(), 25);
-			const SE3 seed = SE3::trans(Vec3{0.f, 0.f, 4.9f});
+			const Sophus::SE3f seed = math::trans(Vec3{0.f, 0.f, 4.9f});
 			icp.obj_pose(0) = seed;
 
 			const auto err =
@@ -681,8 +680,8 @@ TEST_SUITE("normal_known_icp.hpp") {
 
 	TEST_CASE("information_matrix: 対称性") {
 		auto icp = make_icp(forward_rect(), 25);
-		const auto points = sample_points(SE3::trans(Vec3{0.f, 0.f, 5.f}));
-		icp.obj_pose(0) = SE3::trans(Vec3{0.05f, 0.f, 4.5f});
+		const auto points = sample_points(math::trans(Vec3{0.f, 0.f, 5.f}));
+		icp.obj_pose(0) = math::trans(Vec3{0.05f, 0.f, 4.5f});
 
 		const Vec6 tikhonov{0.001f, 0.001f, 0.001f, 0.001f, 0.001f, 0.001f};
 		const auto err = icp.run_icp(std::span{points}, tikhonov, 1, 100.f);
@@ -695,7 +694,7 @@ TEST_SUITE("normal_known_icp.hpp") {
 
 	TEST_CASE("information_matrix: 正対した点群では生の総和がa_tブロックの手計算値と一致する") {
 		auto icp = make_icp(forward_rect(), 25);
-		const SE3 true_pose = SE3::trans(Vec3{0.f, 0.f, 5.f});
+		const Sophus::SE3f true_pose = math::trans(Vec3{0.f, 0.f, 5.f});
 		const auto points = sample_points(true_pose);
 		icp.obj_pose(0) = true_pose; // シードなしで完全一致させる
 
@@ -723,7 +722,7 @@ TEST_SUITE("normal_known_icp.hpp") {
 			Vec3{0.f, 0.f, 3.f},
 			Vec3{0.f, 0.f, 4.f},
 		};
-		icp.obj_pose(0) = SE3::trans(Vec3{1.f, 2.f, 3.f});
+		icp.obj_pose(0) = math::trans(Vec3{1.f, 2.f, 3.f});
 
 		const Vec6 tikhonov{10.f, 10.f, 10.f, 10.f, 10.f, 10.f};
 		const auto err = icp.run_icp(std::span{points}, tikhonov, 5, 100.f);
@@ -742,7 +741,7 @@ TEST_SUITE("normal_known_icp.hpp") {
 
 	TEST_CASE("residual_vector: 読み取れる") {
 		auto icp = make_icp(forward_rect(), 25);
-		const SE3 true_pose = SE3::trans(Vec3{0.f, 0.f, 5.f});
+		const Sophus::SE3f true_pose = math::trans(Vec3{0.f, 0.f, 5.f});
 		const auto points = sample_points(true_pose);
 		icp.obj_pose(0) = true_pose; // 完全一致 -> 各点の誤差は0
 
@@ -757,9 +756,9 @@ TEST_SUITE("normal_known_icp.hpp") {
 
 	TEST_CASE("run_icp: 既定のIcpWeighting{}ではweight_sumが対応点数と厳密に一致する") {
 		auto icp = make_icp(forward_rect(), 25);
-		const SE3 true_pose = SE3::trans(Vec3{0.f, 0.f, 5.f});
+		const Sophus::SE3f true_pose = math::trans(Vec3{0.f, 0.f, 5.f});
 		const auto points = sample_points(true_pose);
-		icp.obj_pose(0) = SE3::trans(Vec3{0.05f, 0.f, 4.5f});
+		icp.obj_pose(0) = math::trans(Vec3{0.05f, 0.f, 4.5f});
 
 		const Vec6 tikhonov{0.001f, 0.001f, 0.001f, 0.001f, 0.001f, 0.001f};
 		const auto err = icp.run_icp(std::span{points}, tikhonov, 1, 100.f);
@@ -770,7 +769,9 @@ TEST_SUITE("normal_known_icp.hpp") {
 	}
 
 	TEST_CASE("run_icp: ノイズモデルが入射角で効く(正対 vs 斜め)") {
-		auto trace_of = [](const Rectangle& rect, const SE3& true_pose, const float sigma_angle) {
+		auto trace_of = [](const Rectangle& rect,
+						   const Sophus::SE3f& true_pose,
+						   const float sigma_angle) {
 			auto icp = make_icp(rect, 25);
 			const auto points = sample_points(true_pose);
 			icp.obj_pose(0) = true_pose; // シードなしで完全一致 (残差0でも重みは効く)
@@ -788,9 +789,9 @@ TEST_SUITE("normal_known_icp.hpp") {
 			return trace;
 		};
 
-		const SE3 straight_pose = SE3::trans(Vec3{0.f, 0.f, 5.f});
-		const SE3 tilted_pose =
-			SE3{math::quaternion::ypr(Vec3{0.f, 0.9f, 0.f}), Vec3{0.f, 0.f, 5.f}};
+		const Sophus::SE3f straight_pose = math::trans(Vec3{0.f, 0.f, 5.f});
+		const Sophus::SE3f tilted_pose =
+			Sophus::SE3f{math::ypr(Vec3{0.f, 0.9f, 0.f}), Eigen::Vector3f{0.f, 0.f, 5.f}};
 
 		const float trace_straight_0 = trace_of(forward_rect(), straight_pose, 0.f);
 		const float trace_straight_1 = trace_of(forward_rect(), straight_pose, 0.5f);
@@ -810,8 +811,8 @@ TEST_SUITE("normal_known_icp.hpp") {
 		auto icp0 = make_icp(forward_rect(), 25);
 		auto icp1 = make_icp(forward_rect(), 25);
 
-		const SE3 grazing_pose =
-			SE3{math::quaternion::ypr(Vec3{0.f, 1.0f, 0.f}), Vec3{0.f, 0.f, 5.f}};
+		const Sophus::SE3f grazing_pose =
+			Sophus::SE3f{math::ypr(Vec3{0.f, 1.0f, 0.f}), Eigen::Vector3f{0.f, 0.f, 5.f}};
 		const auto points = sample_points(grazing_pose);
 		icp0.obj_pose(0) = grazing_pose;
 		icp1.obj_pose(0) = grazing_pose;
@@ -841,14 +842,14 @@ TEST_SUITE("normal_known_icp.hpp") {
 	}
 
 	TEST_CASE("run_icp: 【本命】Huberが外れ値に効く") {
-		const SE3 true_pose = SE3::trans(Vec3{0.f, 0.f, 5.f});
+		const Sophus::SE3f true_pose = math::trans(Vec3{0.f, 0.f, 5.f});
 		auto points = sample_points(true_pose); // 25点、正しい点群
-		points.push_back(true_pose.app_v(Vec3{0.5f, 0.3f, 2.0f}));
-		points.push_back(true_pose.app_v(Vec3{-0.5f, -0.3f, 2.0f}));
-		points.push_back(true_pose.app_v(Vec3{0.0f, 0.6f, 2.0f}));
+		points.push_back(math::app_v(true_pose, Vec3{0.5f, 0.3f, 2.0f}));
+		points.push_back(math::app_v(true_pose, Vec3{-0.5f, -0.3f, 2.0f}));
+		points.push_back(math::app_v(true_pose, Vec3{0.0f, 0.6f, 2.0f}));
 		REQUIRE(points.size() == 28);
 
-		const SE3 seed = SE3::trans(Vec3{0.f, 0.f, 4.5f});
+		const Sophus::SE3f seed = math::trans(Vec3{0.f, 0.f, 4.5f});
 		const Vec6 tikhonov{0.001f, 0.001f, 0.001f, 0.001f, 0.001f, 0.001f};
 		constexpr u32 max_loop_num = 30;
 
@@ -872,8 +873,10 @@ TEST_SUITE("normal_known_icp.hpp") {
 		REQUIRE(err_no_huber == IcpError::none);
 		REQUIRE(err_huber == IcpError::none);
 
-		const float err_z_no_huber = std::fabs(icp_no_huber.obj_pose(0).p.z() - true_pose.p.z());
-		const float err_z_huber = std::fabs(icp_huber.obj_pose(0).p.z() - true_pose.p.z());
+		const float err_z_no_huber =
+			std::fabs(icp_no_huber.obj_pose(0).translation().z() - true_pose.translation().z());
+		const float err_z_huber =
+			std::fabs(icp_huber.obj_pose(0).translation().z() - true_pose.translation().z());
 
 		CHECK(err_z_no_huber > 0.1f);
 		CHECK(err_z_huber < 0.05f);
@@ -882,8 +885,8 @@ TEST_SUITE("normal_known_icp.hpp") {
 
 	TEST_CASE("run_icp: weightingが不正ならinvalid_weightingが返り姿勢が不変") {
 		auto icp = make_icp(forward_rect(), 25);
-		const auto points = sample_points(SE3::trans(Vec3{0.f, 0.f, 5.f}));
-		const SE3 seed = SE3::trans(Vec3{0.f, 0.f, 4.5f});
+		const auto points = sample_points(math::trans(Vec3{0.f, 0.f, 5.f}));
+		const Sophus::SE3f seed = math::trans(Vec3{0.f, 0.f, 4.5f});
 
 		SUBCASE("sigma_rangeが負") {
 			icp.obj_pose(0) = seed;
@@ -946,16 +949,16 @@ TEST_SUITE("normal_known_icp.hpp") {
 
 	TEST_CASE("run_icp: sigma_range=0,sigma_angle=0でもNaN/infにならない(epsilonガード)") {
 		auto icp = make_icp(forward_rect(), 25);
-		const SE3 true_pose = SE3::trans(Vec3{0.f, 0.f, 5.f});
+		const Sophus::SE3f true_pose = math::trans(Vec3{0.f, 0.f, 5.f});
 		const auto points = sample_points(true_pose);
-		icp.obj_pose(0) = SE3::trans(Vec3{0.05f, 0.f, 4.5f});
+		icp.obj_pose(0) = math::trans(Vec3{0.05f, 0.f, 4.5f});
 
 		const Vec6 tikhonov{0.001f, 0.001f, 0.001f, 0.001f, 0.001f, 0.001f};
 		const IcpWeighting weighting{.noise = NoiseModel{.sigma_range = 0.f, .sigma_angle = 0.f}};
 		const auto err = icp.run_icp(std::span{points}, tikhonov, 3, 100.f, 0.f, weighting);
 
 		CHECK(err == IcpError::none);
-		CHECK(vec::isfinite(icp.obj_pose(0).p));
+		CHECK(icp.obj_pose(0).translation().allFinite());
 		CHECK(std::isfinite(icp.weight_sum(0)));
 		const auto im = icp.information_matrix(0);
 		for (u8 i = 0; i < 6; ++i)
@@ -978,7 +981,7 @@ TEST_SUITE("normal_known_icp.hpp") {
 		};
 	}
 
-	inline auto sample_box_points(const SE3& true_pose) -> std::vector<Vec3> {
+	inline auto sample_box_points(const Sophus::SE3f& true_pose) -> std::vector<Vec3> {
 		const Vec3 hlens = box_hlens();
 		std::vector<Vec3> local_pts;
 		for (int axis = 0; axis < 3; ++axis) {
@@ -998,18 +1001,18 @@ TEST_SUITE("normal_known_icp.hpp") {
 		}
 		std::vector<Vec3> pts;
 		pts.reserve(local_pts.size());
-		for (const auto& lp : local_pts) pts.push_back(true_pose.app_v(lp));
+		for (const auto& lp : local_pts) pts.push_back(math::app_v(true_pose, lp));
 		return pts;
 	}
 
 	TEST_CASE(
 		"run_icp: 【本命】coarse-to-fineで同じmax_loop_numのまま収束半径が広がる(BoxInner)"
 	) {
-		const SE3 true_pose = SE3::ide();
+		const Sophus::SE3f true_pose = Sophus::SE3f{};
 		const auto points = sample_box_points(true_pose);
 		REQUIRE(points.size() == 54);
 
-		const SE3 seed = SE3::trans(Vec3{0.35f, 0.35f, 0.35f});
+		const Sophus::SE3f seed = math::trans(Vec3{0.35f, 0.35f, 0.35f});
 
 		const Vec6 tikhonov{0.001f, 0.001f, 0.001f, 0.001f, 0.001f, 0.001f};
 		constexpr u32 max_loop_num = 30;
@@ -1052,17 +1055,19 @@ TEST_SUITE("normal_known_icp.hpp") {
 
 		CHECK(icp_scheduled.obj_status(0) == ObjStatus::updated);
 
-		const float err_no_schedule2 = vec::distance2(icp_no_schedule.obj_pose(0).p, true_pose.p);
-		const float err_scheduled2 = vec::distance2(icp_scheduled.obj_pose(0).p, true_pose.p);
+		const float err_no_schedule2 =
+			(icp_no_schedule.obj_pose(0).translation() - true_pose.translation()).squaredNorm();
+		const float err_scheduled2 =
+			(icp_scheduled.obj_pose(0).translation() - true_pose.translation()).squaredNorm();
 		CHECK(err_scheduled2 < 0.01f); // 並進誤差 < 10cm まで収束する
 
 		CHECK(err_scheduled2 < err_no_schedule2);
 	}
 
 	TEST_CASE("run_icp: 最終反復のゲートがaccept_distance2と厳密に一致する(境界の外れ点で間接確認)") {
-		const SE3 true_pose = SE3::trans(Vec3{0.f, 0.f, 5.f});
+		const Sophus::SE3f true_pose = math::trans(Vec3{0.f, 0.f, 5.f});
 		auto points = sample_points(true_pose); // 25点、すべて面上ぴったり
-		points.push_back(true_pose.app_v(Vec3{0.f, 0.f, 1.0f}));
+		points.push_back(math::app_v(true_pose, Vec3{0.f, 0.f, 1.0f}));
 		REQUIRE(points.size() == 26);
 
 		constexpr float accept_distance2 = 0.04f; // 0.2m
@@ -1096,8 +1101,8 @@ TEST_SUITE("normal_known_icp.hpp") {
 
 	TEST_CASE("run_icp: スケジュール有効でも最終反復のゲートはaccept_distance2と厳密に一致する") {
 		auto icp = make_icp(forward_rect(), 25);
-		const auto points = sample_points(SE3::trans(Vec3{0.f, 0.f, 5.f}));
-		icp.obj_pose(0) = SE3::trans(Vec3{0.f, 0.f, 4.9f});
+		const auto points = sample_points(math::trans(Vec3{0.f, 0.f, 5.f}));
+		icp.obj_pose(0) = math::trans(Vec3{0.f, 0.f, 4.9f});
 
 		constexpr float accept2 = 0.03f;
 		constexpr float begin2 = 7.f;
@@ -1120,8 +1125,8 @@ TEST_SUITE("normal_known_icp.hpp") {
 
 	TEST_CASE("run_icp: max_loop_num=1でスケジュールを指定してもaccept_distance2が使われ壊れない") {
 		auto icp = make_icp(forward_rect(), 25);
-		const auto points = sample_points(SE3::trans(Vec3{0.f, 0.f, 5.f}));
-		icp.obj_pose(0) = SE3::trans(Vec3{0.f, 0.f, 4.5f});
+		const auto points = sample_points(math::trans(Vec3{0.f, 0.f, 5.f}));
+		icp.obj_pose(0) = math::trans(Vec3{0.f, 0.f, 4.5f});
 
 		const auto err =
 			icp.run_icp(std::span{points}, Vec6{}, 1, 100.f, 0.f, IcpWeighting{}, 200.f);
@@ -1132,8 +1137,8 @@ TEST_SUITE("normal_known_icp.hpp") {
 
 	TEST_CASE("run_icp: accept_distance2_beginが不正ならinvalid_accept_scheduleが返り姿勢が不変") {
 		auto icp = make_icp(forward_rect(), 25);
-		const auto points = sample_points(SE3::trans(Vec3{0.f, 0.f, 5.f}));
-		const SE3 seed = SE3::trans(Vec3{0.f, 0.f, 4.5f});
+		const auto points = sample_points(math::trans(Vec3{0.f, 0.f, 5.f}));
+		const Sophus::SE3f seed = math::trans(Vec3{0.f, 0.f, 4.5f});
 
 		SUBCASE("accept_distance2より小さい(狭い→広いの逆順)") {
 			icp.obj_pose(0) = seed;
@@ -1193,8 +1198,8 @@ TEST_SUITE("normal_known_icp.hpp") {
 
 	TEST_CASE("run_icp: スケジュール有効時はconvergence_delta2を非常に大きくしてもmax_loop_numまで回る") {
 		auto icp = make_icp(forward_rect(), 25);
-		const auto points = sample_points(SE3::trans(Vec3{0.f, 0.f, 5.f}));
-		icp.obj_pose(0) = SE3::trans(Vec3{0.f, 0.f, 4.5f});
+		const auto points = sample_points(math::trans(Vec3{0.f, 0.f, 5.f}));
+		icp.obj_pose(0) = math::trans(Vec3{0.f, 0.f, 4.5f});
 
 		const Vec6 tikhonov{0.01f, 0.01f, 0.01f, 0.01f, 0.01f, 0.01f};
 		constexpr u32 max_loop_num = 20;

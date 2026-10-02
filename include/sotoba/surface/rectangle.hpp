@@ -8,7 +8,6 @@
 
 namespace sotoba::surface::rectangle_impl {
 	using sotoba::math::epsilon;
-	using sotoba::math::SE3;
 	using sotoba::math::UVec3;
 	using sotoba::math::Vec;
 	using sotoba::math::Vec3;
@@ -82,17 +81,17 @@ namespace sotoba::surface::rectangle_impl {
 			return {{q, Vec{vec::dot(qp, qp)}}, this->normal};
 		}
 
-		void apply_se3(const SE3& h) noexcept {
-			this->center = h.app_v(this->center);
+		void apply_se3(const Sophus::SE3f& h) noexcept {
+			this->center = math::app_v(h, this->center);
 			this->u_axis_and_hlen = {
-				h.app_uv(this->u_axis_and_hlen.xyz()),
+				math::app_uv(h, this->u_axis_and_hlen.xyz()),
 				Vec{this->u_axis_and_hlen.w()}
 			};
 			this->v_axis_and_hlen = {
-				h.app_uv(this->v_axis_and_hlen.xyz()),
+				math::app_uv(h, this->v_axis_and_hlen.xyz()),
 				Vec{this->v_axis_and_hlen.w()}
 			};
-			this->normal = h.app_uv(this->normal);
+			this->normal = math::app_uv(h, this->normal);
 		}
 
 		auto ray_collision(const UVec3& ray) const noexcept -> float {
@@ -138,18 +137,15 @@ namespace sotoba::surface {
 	#include <doctest.h>
 
 	#include "sotoba/math/approx_check.hpp"
-	#include "sotoba/math/quaternion.hpp"
 
 TEST_SUITE("rectangle.hpp") {
 	using namespace sotoba;
-	using math::SE3;
 	using math::UVec3;
 	using math::Vec;
 	using math::Vec3;
 	using math::Vec4;
 	using surface::Rectangle;
 	namespace vec = math::vec;
-	namespace quaternion = math::quaternion;
 	using math::ApproxCheck;
 
 	using std::numbers::pi;
@@ -287,7 +283,7 @@ TEST_SUITE("rectangle.hpp") {
 
 	TEST_CASE("Rectangle::apply_se3") {
 		// --- テスト用ヘルパー: クォータニオン作成 ---
-		const auto rot_y_90 = quaternion::ypr({0.f, float(pi / 2.), 0.f});
+		const auto rot_y_90 = math::ypr({0.f, float(pi / 2.), 0.f});
 
 		// --- 初期状態の矩形 ---
 		// 中心: (0, 0, 5)
@@ -306,7 +302,7 @@ TEST_SUITE("rectangle.hpp") {
 
 			// (10, -5, 0) だけ平行移動
 			Vec3 translation{10.0f, -5.0f, 0.0f};
-			SE3 trans_se3 = SE3::trans(translation);
+			Sophus::SE3f trans_se3 = math::trans(translation);
 
 			rect.apply_se3(trans_se3);
 
@@ -337,7 +333,7 @@ TEST_SUITE("rectangle.hpp") {
 			// X軸 -> -Z軸
 			// Y軸 -> Y軸 (不変)
 			// Z軸 -> X軸
-			SE3 rot_se3 = SE3::rot(rot_y_90);
+			Sophus::SE3f rot_se3 = math::rot(rot_y_90);
 
 			rect.apply_se3(rot_se3);
 
@@ -362,13 +358,13 @@ TEST_SUITE("rectangle.hpp") {
 			CHECK(rect.u_axis_and_hlen.w() == doctest::Approx(2.0f));
 		}
 
-		SUBCASE("Combined SE3 (Rotation + Translation)") {
+		SUBCASE("Combined Sophus::SE3f (Rotation + Translation)") {
 			Rectangle rect = base_rect;
 
 			// Y軸90度回転 してから (0, 10, 0) 平行移動
 			// SE3 = Trans * Rot
 			// app_v(v) = Rot(v) + Trans
-			SE3 combined = SE3::trans(Vec3{0.0f, 10.0f, 0.0f}) * SE3::rot(rot_y_90);
+			Sophus::SE3f combined = math::trans(Vec3{0.0f, 10.0f, 0.0f}) * math::rot(rot_y_90);
 
 			rect.apply_se3(combined);
 
@@ -389,7 +385,7 @@ TEST_SUITE("rectangle.hpp") {
 
 		SUBCASE("Identity Transformation") {
 			Rectangle rect = base_rect;
-			rect.apply_se3(SE3::ide());
+			rect.apply_se3(Sophus::SE3f{});
 
 			CHECK(ApproxCheck{rect.center} == ApproxCheck{base_rect.center});
 			CHECK(
