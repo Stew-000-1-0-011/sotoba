@@ -67,12 +67,32 @@ include(GNUInstallDirs)
 # find_package(foo REQUIRED)
 find_package(Eigen3 REQUIRED)
 
+# 不変条件: SE3f::leftJacobianInverse を持つ Sophus 1.24.x 以降だけを受け入れる
+# (1.22 系には無い)。見つからなければ同じ版を取得して同梱する。
+find_package(Sophus 1.24.6 QUIET CONFIG)
+if(NOT Sophus_FOUND)
+	include(FetchContent)
+	set(BUILD_SOPHUS_TESTS OFF)
+	set(BUILD_PYTHON_BINDINGS OFF)
+	# 取得した Sophus を sotoba と同じ prefix にインストールし、
+	# find_package(sotoba) 側の find_dependency(Sophus) で解決できるようにする。
+	set(SOPHUS_INSTALL ON)
+	FetchContent_Declare(
+		Sophus
+		GIT_REPOSITORY https://github.com/strasdat/Sophus.git
+		GIT_TAG 1.24.6
+		SYSTEM
+	)
+	FetchContent_MakeAvailable(Sophus)
+endif()
+
 # --- 依存を指定 ---
 ## libとbinの依存が共通 -> binはあくまでlibに従うもの、libの使わないものを使いたいならプロジェクトを分けるべき
 add_library(${PROJECT_NAME}_dep_private INTERFACE EXCLUDE_FROM_ALL)
 target_link_libraries(${PROJECT_NAME}_dep_private
 	INTERFACE
 		Eigen3::Eigen
+		Sophus::Sophus
 )
 
 add_library(${PROJECT_NAME}_dep_export INTERFACE EXCLUDE_FROM_ALL)
@@ -95,8 +115,8 @@ include(cmake/lib.cmake)
 # 注意: サニタイザ (sotoba_build_export) や -march=native (sotoba_build_common_private) 等の
 # 開発用フラグを絶対に載せないこと。また既存の *_lib / *_dep_* / *_build_* 系ターゲットは
 # 全て EXCLUDE_FROM_ALL で export set に入っていないため、リンクすると
-# install(EXPORT) が失敗する。よってここでは include ディレクトリ・cxx_std_23・Eigen3::Eigen
-# だけを持つ独立したターゲットを新規に作る。
+# install(EXPORT) が失敗する。よってここでは include ディレクトリ・cxx_std_23・Eigen3::Eigen・
+# Sophus::Sophus だけを持つ独立したターゲットを新規に作る。
 add_library(${PROJECT_NAME}_headers INTERFACE)
 target_include_directories(${PROJECT_NAME}_headers
 	INTERFACE
@@ -104,7 +124,7 @@ target_include_directories(${PROJECT_NAME}_headers
 		$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 target_compile_features(${PROJECT_NAME}_headers INTERFACE cxx_std_23)
-target_link_libraries(${PROJECT_NAME}_headers INTERFACE Eigen3::Eigen)
+target_link_libraries(${PROJECT_NAME}_headers INTERFACE Eigen3::Eigen Sophus::Sophus)
 # install(EXPORT ... NAMESPACE sotoba::) はターゲット名をそのまま名前空間化するため、
 # EXPORT_NAME を指定しないと find_package 経由では sotoba::sotoba_headers になってしまい、
 # 下の add_subdirectory 用エイリアス (sotoba::sotoba) と名前が食い違う。
