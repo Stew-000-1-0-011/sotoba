@@ -33,8 +33,6 @@ using namespace math;
 constexpr float pi = std::numbers::pi;
 using namespace std::chrono_literals;
 
-using Vec6 = Vec<6>;
-
 int main() {
 	using Variant = std::variant<surface::BoxInner, surface::BoxOuter, surface::Rectangle>;
 
@@ -43,7 +41,7 @@ int main() {
 	float scan_hz = 10.f;
 	float trans_speed = 4.0f;
 	float rot_speed = 1.5 * pi;
-	Vec6 tikhnov{};
+	Sophus::SE3f::Tangent tikhnov = Sophus::SE3f::Tangent::Zero();
 	std::cin >> loop_num >> accept_distance >> scan_hz;
 	std::cin >> trans_speed >> rot_speed;
 	std::cin >> tikhnov[0] >> tikhnov[1] >> tikhnov[2] >> tikhnov[3] >> tikhnov[4] >> tikhnov[5];
@@ -190,10 +188,14 @@ int main() {
 
 		// ICP
 		{
-			const auto icp_err =
-				icp.run_icp(std::span{point_cloud}, tikhnov, loop_num, pow2(accept_distance));
+			const auto icp_err = icp.run_icp(
+				std::span{point_cloud},
+				{.max_loop_num = loop_num,
+				 .accept_distance2 = pow2(accept_distance),
+				 .tikhonov = tikhnov}
+			);
 			if (icp_err != icp_resource::IcpError::none) {
-				std::println(stderr, "run_icp failed: too_many_points");
+				std::println(stderr, "run_icp failed: {}", std::to_underlying(icp_err));
 			}
 			for (u8 iobj = 0; iobj < objects.size(); ++iobj) {
 				estimated_poses[iobj] = icp.obj_poses[iobj];

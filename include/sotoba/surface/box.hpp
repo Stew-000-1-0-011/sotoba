@@ -635,8 +635,11 @@ TEST_SUITE("box.hpp") {
 			};
 			icp.obj_pose(0) = seed;
 
-			const Vec6 tikhonov{0.001f, 0.001f, 0.001f, 0.001f, 0.001f, 0.001f};
-			const auto err = icp.run_icp(std::span{points}, tikhonov, 50, 100.f);
+			const Sophus::SE3f::Tangent tikhonov = Sophus::SE3f::Tangent::Constant(0.001f);
+			const auto err = icp.run_icp(
+				std::span{points},
+				{.max_loop_num = 50, .accept_distance2 = 100.f, .tikhonov = tikhonov}
+			);
 
 			CHECK(err == IcpError::none);
 			CHECK(icp.obj_status(0) == ObjStatus::updated);
