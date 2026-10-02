@@ -1,7 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"
 
-#include "sotoba/math/quaternion.hpp"
 #include "sotoba/math/se3.hpp"
 #include "sotoba/math/vec.hpp"
 

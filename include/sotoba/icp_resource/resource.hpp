@@ -14,7 +14,6 @@
 #include "sotoba/surface/surface.hpp"
 
 namespace sotoba::icp_resource::resource_impl {
-	using math::SE3;
 	using math::Vec3;
 	using surface::ExplanationOnlySurface;
 	using surface::surfacelike;
@@ -48,8 +47,8 @@ namespace sotoba::icp_resource::resource_impl {
 					usize points_num,
 					u8 oid) {
 			   { T_{std::move(surfs), std::move(osids), obj_num, points_num} };
-			   { mut.obj_pose(oid) } -> std::convertible_to<SE3&>;
-			   { imut.obj_pose(oid) } -> std::convertible_to<const SE3&>;
+			   { mut.obj_pose(oid) } -> std::convertible_to<Sophus::SE3f&>;
+			   { imut.obj_pose(oid) } -> std::convertible_to<const Sophus::SE3f&>;
 		   };
 
 	template <template <class...> class Resource_, surfacelike... Ss_>

@@ -13,7 +13,6 @@
 #include "sotoba/icp_resource/normal_known_icp.hpp"
 #include "sotoba/icp_resource/resource.hpp"
 
-#include "sotoba/math/quaternion.hpp"
 #include "sotoba/math/scalar_functions.hpp"
 #include "sotoba/math/se3.hpp"
 #include "sotoba/math/vec.hpp"
@@ -107,12 +106,12 @@ int main() {
 	float t = 0.f;
 
 	// 各オブジェクトの真の姿勢
-	std::vector<SE3> true_poses(objects.size());
-	true_poses[0] = SE3::ide();
+	std::vector<Sophus::SE3f> true_poses(objects.size());
+	true_poses[0] = Sophus::SE3f{};
 	// true_poses[0] = SE3::trans({0.f, 20.f, 0.f});
 	// true_poses[1] = SE3::trans({5.f, 10.f, 0.f});
 	// 各オブジェクトの推定姿勢
-	std::vector<SE3> estimated_poses = true_poses;
+	std::vector<Sophus::SE3f> estimated_poses = true_poses;
 	// 点群データ
 	std::vector<Vec3> point_cloud(lidar.get_points_num());
 
@@ -153,11 +152,11 @@ int main() {
 			// const float yaw = 1.f;
 
 			const float dt = timer.lap().count();
-			const auto diff = SE3::trans(trans_speed * dt * p)
-				* SE3::rot(quaternion::ypr(rot_speed * dt * Vec3{roll, pitch, yaw}));
+			const auto diff = math::trans(trans_speed * dt * p)
+				* math::rot(math::ypr(rot_speed * dt * Vec3{roll, pitch, yaw}));
 
 			true_poses[current_controlled_object] = diff * true_poses[current_controlled_object];
-			std::println("pose_t 0: {}", Repr<SE3>::repr(true_poses[0]));
+			std::println("pose_t 0: {}", Repr<Sophus::SE3f>::repr(true_poses[0]));
 		}
 		std::println("process_input: {}", bench_timer.lap());
 
@@ -199,7 +198,7 @@ int main() {
 			for (u8 iobj = 0; iobj < objects.size(); ++iobj) {
 				estimated_poses[iobj] = icp.obj_poses[iobj];
 			}
-			std::println("pose_e 0: {}", Repr<SE3>::repr(estimated_poses[0]));
+			std::println("pose_e 0: {}", Repr<Sophus::SE3f>::repr(estimated_poses[0]));
 		}
 		std::println("icp: {}", bench_timer.lap());
 	};

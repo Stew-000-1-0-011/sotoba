@@ -9,7 +9,6 @@
 #include <Eigen/src/Core/Matrix.h>
 #include <pangolin/pangolin.h>
 
-#include "sotoba/math/quaternion.hpp"
 #include "sotoba/math/se3.hpp"
 #include "sotoba/math/square_mat.hpp"
 #include "sotoba/math/vec.hpp"
@@ -19,13 +18,13 @@ namespace my_pango_util::impl {
 	using namespace math;
 	using Eigen::Matrix4f;
 
-	inline auto pose_to_mat4f(const SE3& h) -> Matrix4f {
-		const auto rot = quaternion::to_mat(h.uq);
-		const auto t = h.p;
+	inline auto pose_to_mat4f(const Sophus::SE3f& h) -> Matrix4f {
+		const Eigen::Matrix3f rot = h.rotationMatrix();
+		const Eigen::Vector3f t = h.translation();
 
 		Matrix4f ret = Matrix4f::Identity();
 		for (u8 i = 0; i < 3; ++i)
-			for (u8 j = 0; j < 3; ++j) { ret(i, j) = rot[i, j]; }
+			for (u8 j = 0; j < 3; ++j) { ret(i, j) = rot(i, j); }
 		for (u8 i = 0; i < 3; ++i) ret(3, i) = t[i];
 		ret(3, 3) = 1;
 
@@ -53,7 +52,7 @@ namespace my_pango_util::impl {
 
 		// 姿勢（座標フレーム）を描画する
 		inline void drawPose(
-			const SE3& pose,
+			const Sophus::SE3f& pose,
 			const float len,
 			const Vec3& xrgb,
 			const Vec3& yrgb,
