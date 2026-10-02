@@ -137,7 +137,7 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 		}
 
 		/// 正規方程式の係数行列 A = Σ JᵀNJ。成分順序は Sophus::SE3f::Tangent と同じで、
-		/// 添字 0..2 が並進、3..5 が回転。正規化も tikhonov も加えていない生の総和。
+		/// 添字 0..2 が並進、3..5 が回転。tikhonov を加えていない生の総和。
 		auto information_matrix(const u8 oid) const noexcept -> Eigen::Matrix<float, 6, 6> {
 			Eigen::Matrix<float, 6, 6> ret;
 			for (u8 i = 0; i < 3; ++i)
@@ -339,23 +339,21 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 						this->obj_statuses[iobj] = ObjStatus::too_few_correspondences;
 						continue;
 					}
-					// 不変条件: a_* / b は生の総和のまま。正規化と tikhonov はここでだけ適用する
+					// 不変条件: a_* / b は生の総和のまま。tikhonov はここでだけ A の対角に加える
 					// 不変条件: 成分順序は Sophus::SE3f::Tangent = (並進, 回転)。a_t が左上、a_w が右下
-					const float n = this->weight_sums[iobj];
-
 					using Matrix6f = Eigen::Matrix<float, 6, 6>;
 
 					Matrix6f a_tri;
 					for (u8 i = 0; i < 3; ++i)
 						for (u8 j = i; j < 3; ++j) {
 							a_tri(i, j) =
-								this->a_t[iobj][i, j] / n + (i == j ? tikhonov[i] : 0.f);
+								this->a_t[iobj][i, j] + (i == j ? tikhonov[i] : 0.f);
 							a_tri(i + 3, j + 3) =
-								this->a_w[iobj][i, j] / n + (i == j ? tikhonov[i + 3] : 0.f);
+								this->a_w[iobj][i, j] + (i == j ? tikhonov[i + 3] : 0.f);
 						}
 					for (u8 i = 0; i < 3; ++i)
 						for (u8 j = 0; j < 3; ++j) {
-							a_tri(i, j + 3) = this->a_tw[iobj][i, j] / n;
+							a_tri(i, j + 3) = this->a_tw[iobj][i, j];
 						}
 					const Matrix6f a = a_tri.selfadjointView<Eigen::Upper>();
 					Eigen::LLT<Matrix6f> cholesky(a);
@@ -364,7 +362,7 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 						continue;
 					}
 
-					const Sophus::SE3f::Tangent x = cholesky.solve(this->b[iobj] / n);
+					const Sophus::SE3f::Tangent x = cholesky.solve(this->b[iobj]);
 
 					this->obj_poses[iobj] = Sophus::SE3f::exp(x) * this->obj_poses[iobj];
 					this->obj_poses[iobj].so3().normalize();
@@ -1441,6 +1439,35 @@ TEST_SUITE("normal_known_icp.hpp") {
 		const Tangent expected = -(icp.information_matrix(0) * xi0);
 		const Tangent b = icp.residual_vector(0);
 		CHECK((b - expected).norm() < 0.05f * expected.norm());
+	}
+
+	TEST_CASE("run_icp: tikhonovが支配的なとき、点を2倍に複製すると1反復の更新量も2倍になる") {
+		const Sophus::SE3f true_pose{
+			math::ypr(Vec3{0.2f, 0.15f, 0.1f}),
+			Eigen::Vector3f{0.3f, -0.2f, 0.1f}
+		};
+		const auto points = sample_box_points(true_pose);
+		auto doubled = points;
+		doubled.insert(doubled.end(), points.begin(), points.end());
+
+		Tangent xi0;
+		xi0 << 0.05f, -0.04f, 0.03f, 0.04f, -0.05f, 0.03f;
+		const Sophus::SE3f seed = Sophus::SE3f::exp(xi0) * true_pose;
+
+		auto step_norm = [&](const std::vector<Vec3>& pts) {
+			auto icp = make_box_icp(pts.size());
+			icp.obj_pose(0) = seed;
+			const auto err = icp.run_icp(
+				std::span{pts},
+				{.max_loop_num = 1, .accept_distance2 = 100.f, .tikhonov = Tangent::Constant(1e4f)}
+			);
+			REQUIRE(err == IcpError::none);
+			REQUIRE(icp.obj_status(0) == ObjStatus::updated);
+			return (icp.obj_pose(0) * seed.inverse()).log().norm();
+		};
+
+		const float ratio = step_norm(doubled) / step_norm(points);
+		CHECK(std::fabs(ratio - 2.f) < 0.05f);
 	}
 
 	TEST_CASE("run_icp: tikhonovは(並進, 回転)の順で効く") {

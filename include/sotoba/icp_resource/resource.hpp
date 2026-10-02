@@ -56,7 +56,8 @@ namespace sotoba::icp_resource::resource_impl {
 	/// 全メンバに既定値があるが、max_loop_num と accept_distance2 は run_icp が
 	/// 検証するので、既定値のまま呼ぶとエラーが返る。
 	///
-	/// tikhonov は Sophus::SE3f::Tangent と同じ (並進, 回転) の順。
+	/// tikhonov は Sophus::SE3f::Tangent と同じ (並進, 回転) の順で、A = Σ w JᵀJ の対角に
+	/// そのまま加わる。重みの総和では割らない。
 	///
 	/// priors は非所有ビュー。IcpParams を保存して呼び出しをまたいで使わない。
 	/// 空、または obj_num と同じ長さ。
