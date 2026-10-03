@@ -102,3 +102,12 @@ clang-docが読めるコメントも順次加えていかないと。
 
 もしかして現在の実装だと、点の数は少ないほうが収束が速い...?
 点数が多いとバグる(valid_pointscount == 0になる)のも不思議だ
+
+10/3 issue #4(事前分布)に対応した。
+姿勢を`math::SE3`から`Sophus::SE3f`に替え、接空間を(並進, 回転)の順に統一した(`Vec6`は廃止)。
+`run_icp`の引数は`IcpParams`にまとめた。solve直前の`/n`は外したので、`tikhonov`の実効強度は変わっている(`A`が生の総和になった)。
+事前分布は`IcpParams::priors`で渡し、`r = log(T_k mean^{-1})`、`Jinv = leftJacobianInverse(r)`、`H = A + Jinv^T Λ Jinv + diag(tikhonov)`、`g = b - Jinv^T Λ r`を解く。`g`の符号はマイナス。
+`Jinv`を`I`で近似すると誤差が`|r|`の1次で出るので、Sophusの閉形式を使っている。
+非ゼロの事前があるときは`NoiseModel`が必須。事前ありのオブジェクトは対応点1点から解くので、1面しか見えないときのランク落ちで捨てられなくなる。
+`posterior_information(oid)`で`H`が取れる。対応付けの誤りと地図誤差を含まないので楽観的。
+`normal_known_icp.md`に定式化を追記した。examplesの変数名`tikhnov`も直した。
