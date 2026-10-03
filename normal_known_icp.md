@@ -44,7 +44,7 @@ Sophusの規約に合わせて`Sophus::SE3f::Tangent = (upsilon, omega)`、**並
 `tikhonov`はLM減衰であり、右辺には何も足さない(事前分布とは別概念)。
 
 `Jinv`が`I`で近似できるのは`r`が小さいときだけで、誤差は`|r|`の1次で効く。
-`leftJacobianInverse`は回転角`θ = 2π`に極を持つので、`r`の回転成分が`π`を超える(または非有限の)とき`prior_residual_too_large`を返す。
+`leftJacobianInverse`は回転角`θ = 2π`に極を持つが、`log()`が回転角を`[0, π]`に畳むため`r`からは到達しない。`r`を線形化できないとき(`pose`や`mean`が非有限のとき)は`prior_linearization_failed`を返す。
 
 `Λ = 0`のオブジェクトは事前なしと同じ式を通り、結果は一致する。
 

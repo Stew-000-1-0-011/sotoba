@@ -34,9 +34,10 @@ namespace sotoba::icp_resource::resource_impl {
 		/// 非ゼロの事前分布があるのに weighting.noise が無い。
 		/// Λ は物理単位を持つので、A も 1/σ² の重みで組まないと足せない。
 		prior_requires_noise_model,
-		/// 事前分布の mean と姿勢の相対回転が π を超えた、または非有限。
-		/// 左ヤコビアン逆の特異点 θ = 2π を避けるための線形化の適用範囲。
-		prior_residual_too_large,
+		/// 事前残差 r = log(pose mean⁻¹) を線形化できない。
+		/// Sophus の log() は回転角を [0, π] に畳むので、実際に発火するのは
+		/// pose または mean が非有限な場合。
+		prior_linearization_failed,
 		/// 事前分布の information が非対称、または mean を含め非有限。
 		invalid_prior_information,
 	};
