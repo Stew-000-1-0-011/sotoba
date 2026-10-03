@@ -11,7 +11,6 @@ namespace sotoba::math {
 	using vec_impl::Vec;
 	using Vec3 = Vec<3>;
 	using Vec4 = Vec<4>;
-	using Vec6 = Vec<6>;
 	template <u8 n_>
 	using UVec = Vec<n_, true>;
 	using UVec3 = Vec<3, true>;

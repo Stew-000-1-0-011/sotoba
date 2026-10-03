@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <limits>
 #include "sotoba/math/epsilon.hpp"
-#include "sotoba/math/quaternion.hpp"
 #include "sotoba/math/scalar_functions.hpp"
 #include "sotoba/math/se3.hpp"
 #include "sotoba/math/square_mat.hpp"
@@ -12,7 +11,6 @@
 #include "sotoba/surface/surface.hpp"
 
 namespace sotoba::surface::box_impl {
-	using math::SE3;
 	using math::SquareMat;
 	using math::UVec3;
 	using math::Vec;
@@ -106,10 +104,10 @@ namespace sotoba::surface::box_impl {
 			return {{this->center + this->rot.transpose() * cq_local, Vec{d}}, n};
 		}
 
-		void apply_se3(const SE3& h) noexcept {
-			this->center = h.app_v(this->center);
+		void apply_se3(const Sophus::SE3f& h) noexcept {
+			this->center = math::app_v(h, this->center);
 			for (u8 i = 0; i < 3; ++i) {
-				const UVec3 new_axis = h.app_uv(vec::as_uvec(this->rot[i]));
+				const UVec3 new_axis = math::app_uv(h, vec::as_uvec(this->rot[i]));
 				for (u8 j = 0; j < 3; ++j) this->rot[i, j] = new_axis[j];
 			}
 		}
@@ -236,10 +234,10 @@ namespace sotoba::surface::box_impl {
 			return {{this->center + this->rot.transpose() * cq_local, Vec{d}}, n};
 		}
 
-		void apply_se3(const SE3& h) noexcept {
-			this->center = h.app_v(this->center);
+		void apply_se3(const Sophus::SE3f& h) noexcept {
+			this->center = math::app_v(h, this->center);
 			for (u8 i = 0; i < 3; ++i) {
-				const UVec3 new_axis = h.app_uv(vec::as_uvec(this->rot[i]));
+				const UVec3 new_axis = math::app_uv(h, vec::as_uvec(this->rot[i]));
 				for (u8 j = 0; j < 3; ++j) this->rot[i, j] = new_axis[j];
 			}
 		}
@@ -306,6 +304,7 @@ TEST_SUITE("box.hpp") {
 	using sotoba::surface::box_impl::BoxInner;
 	using sotoba::surface::box_impl::BoxOuter;
 	using namespace sotoba::math;
+	namespace math = sotoba::math;
 
 	TEST_CASE("BoxOuter") {
 		// 基本設定: 中心(0,0,5), 半サイズ(1,1,1), 回転なし
@@ -406,16 +405,16 @@ TEST_SUITE("box.hpp") {
 			// 元のBox: 中心(0,0,5), 半径(1,1,1)
 			// 移動後中心: (2, 0, 5) -> 回転(Z90) -> (0, 2, 5) ... 注意: app_vの仕様によるが、通常は Rot * v + trans
 
-			const UQuaternion rot_z90 = quaternion::ypr({0.f, 0.f, std::numbers::pi_v<float> / 2});
+			const Sophus::SO3f rot_z90 = math::ypr({0.f, 0.f, std::numbers::pi_v<float> / 2});
 			const Vec3 trans{2.0f, 0.0f, 0.0f};
-			SE3 pose{rot_z90, trans};
+			Sophus::SE3f pose{rot_z90, math::to_eigen(trans)};
 
 			box.apply_se3(pose);
 
 			// 中心位置の確認: (0,0,5) -> rot -> (0,0,5) -> + trans(2,0,0) -> (2,0,5)
 			// ※ ライブラリの app_v が (R*v + t) か (v + t) か確認必要だが、一般的にRigidBody変換ならこう。
 			// テストコード上では計算結果をcheck_vec_approxする
-			const Vec3 expected_center = pose.app_v(Vec3{0.0f, 0.0f, 5.0f});
+			const Vec3 expected_center = math::app_v(pose, Vec3{0.0f, 0.0f, 5.0f});
 			CHECK(ApproxCheck{box.center} == ApproxCheck{expected_center});
 
 			// 回転の確認: X軸(1,0,0)だったものがY軸(0,1,0)になっているか
@@ -550,13 +549,13 @@ TEST_SUITE("box.hpp") {
 			const Vec3 se3_hlens{1.0f, 1.0f, 1.0f};
 			BoxInner se3_box{se3_center, rot, se3_hlens};
 
-			const UQuaternion rot_z90 = quaternion::ypr({0.f, 0.f, std::numbers::pi_v<float> / 2});
+			const Sophus::SO3f rot_z90 = math::ypr({0.f, 0.f, std::numbers::pi_v<float> / 2});
 			const Vec3 trans{2.0f, 0.0f, 0.0f};
-			SE3 pose{rot_z90, trans};
+			Sophus::SE3f pose{rot_z90, math::to_eigen(trans)};
 
 			se3_box.apply_se3(pose);
 
-			const Vec3 expected_center = pose.app_v(Vec3{0.0f, 0.0f, 5.0f});
+			const Vec3 expected_center = math::app_v(pose, Vec3{0.0f, 0.0f, 5.0f});
 			CHECK(ApproxCheck{se3_box.center} == ApproxCheck{expected_center});
 
 			const Vec3 new_axis_x = se3_box.rot[0];
@@ -615,15 +614,15 @@ TEST_SUITE("box.hpp") {
 
 			const Vec3 true_ypr{0.2f, 0.15f, 0.1f};
 			const Vec3 true_trans{0.3f, -0.2f, 0.1f};
-			const SE3 true_pose{quaternion::ypr(true_ypr), true_trans};
+			const Sophus::SE3f true_pose{math::ypr(true_ypr), math::to_eigen(true_trans)};
 
 			std::vector<Vec3> points;
 			points.reserve(local_pts.size());
-			for (const auto& lp : local_pts) points.push_back(true_pose.app_v(lp));
+			for (const auto& lp : local_pts) points.push_back(math::app_v(true_pose, lp));
 
 			const Vec3 seed_ypr = true_ypr + Vec3{0.08f, -0.06f, 0.05f};
 			const Vec3 seed_trans = true_trans + Vec3{0.15f, -0.1f, 0.08f};
-			const SE3 seed{quaternion::ypr(seed_ypr), seed_trans};
+			const Sophus::SE3f seed{math::ypr(seed_ypr), math::to_eigen(seed_trans)};
 
 			std::array<std::vector<ObjSurfId>, 1> osids{
 				std::vector<ObjSurfId>{osid_pack(ObjId(0), SurfId(0))}
@@ -636,16 +635,21 @@ TEST_SUITE("box.hpp") {
 			};
 			icp.obj_pose(0) = seed;
 
-			const Vec6 tikhonov{0.001f, 0.001f, 0.001f, 0.001f, 0.001f, 0.001f};
-			const auto err = icp.run_icp(std::span{points}, tikhonov, 50, 100.f);
+			const Sophus::SE3f::Tangent tikhonov = Sophus::SE3f::Tangent::Constant(0.001f);
+			const auto err = icp.run_icp(
+				std::span{points},
+				{.max_loop_num = 50, .accept_distance2 = 100.f, .tikhonov = tikhonov}
+			);
 
 			CHECK(err == IcpError::none);
 			CHECK(icp.obj_status(0) == ObjStatus::updated);
 
-			auto trans_err2 = [&](const SE3& p) { return vec::distance2(p.p, true_pose.p); };
-			auto rot_err2 = [&](const SE3& p) {
-				const SE3 diff = p * true_pose.inv();
-				return vec::dot(diff.uq.v.xyz(), diff.uq.v.xyz());
+			auto trans_err2 = [&](const Sophus::SE3f& p) {
+				return (p.translation() - true_pose.translation()).squaredNorm();
+			};
+			auto rot_err2 = [&](const Sophus::SE3f& p) {
+				const Sophus::SE3f diff = p * true_pose.inverse();
+				return diff.unit_quaternion().vec().squaredNorm();
 			};
 
 			const float seed_trans_err2 = trans_err2(seed);
