@@ -41,10 +41,10 @@ int main() {
 	float scan_hz = 10.f;
 	float trans_speed = 4.0f;
 	float rot_speed = 1.5 * pi;
-	Sophus::SE3f::Tangent tikhnov = Sophus::SE3f::Tangent::Zero();
+	Sophus::SE3f::Tangent tikhonov = Sophus::SE3f::Tangent::Zero();
 	std::cin >> loop_num >> accept_distance >> scan_hz;
 	std::cin >> trans_speed >> rot_speed;
-	std::cin >> tikhnov[0] >> tikhnov[1] >> tikhnov[2] >> tikhnov[3] >> tikhnov[4] >> tikhnov[5];
+	std::cin >> tikhonov[0] >> tikhonov[1] >> tikhonov[2] >> tikhonov[3] >> tikhonov[4] >> tikhonov[5];
 
 	// オブジェクト作成
 	// データの実体グループ1: 静的な環境（壁や床など）
@@ -192,7 +192,7 @@ int main() {
 				std::span{point_cloud},
 				{.max_loop_num = loop_num,
 				 .accept_distance2 = pow2(accept_distance),
-				 .tikhonov = tikhnov}
+				 .tikhonov = tikhonov}
 			);
 			if (icp_err != icp_resource::IcpError::none) {
 				std::println(stderr, "run_icp failed: {}", std::to_underlying(icp_err));

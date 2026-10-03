@@ -37,12 +37,53 @@ nano build.bash
 Ubuntu24.04
 (clang-format-20などとベタ書きしてしまったため。そこらへんを一括置換すればWindowsでも動きそう)
 
+### 依存ライブラリ
+Eigen3とSophus(1.24.6以降)に依存する。
+姿勢は`Sophus::SE3f`、接空間は`Sophus::SE3f::Tangent`(並進が先、回転が後の6次元)。
+`find_package(Sophus)`で見つからなければ、CMakeがSophus 1.24.6をFetchContentで取得する(ネットワークが要る)。
+`find_package(sotoba)`した側でも`Sophus::Sophus`が解決される。
+
 ### 必要なコンパイラ
 C++23のうち deducing this (P0847) と多次元`operator[]` (P2128)、`<format>`を使う。
 動作確認済みの最低バージョンは **GCC 14** / **Clang 18**。
 Ubuntu 24.04の既定の`g++`はGCC 13でdeducing thisが使えないので、
 `-DCMAKE_CXX_COMPILER=g++-14`のように明示すること。
 満たさないコンパイラでは`sotoba/stdtypes.hpp`が`#error`で弾く。
+
+## run_icpの呼び出し
+`run_icp`は点群と`IcpParams`を受け取る。
+`max_loop_num`と`accept_distance2`は既定値のままだとエラーが返るので必ず指定する。
+```cpp
+const auto err = icp.run_icp(
+    std::span{point_cloud},
+    {.max_loop_num = 10, .accept_distance2 = 0.06f * 0.06f, .tikhonov = tikhonov}
+);
+```
+`tikhonov`は`Sophus::SE3f::Tangent`と同じ(並進, 回転)の順で、`A = Σ w JᵀJ`の対角にそのまま加わる。
+`A`は重みの総和で割らない生の総和である。
+
+### 事前分布
+オブジェクトごとの事前分布を`IcpParams::priors`(空、または`obj_num`個)で渡せる。
+```cpp
+const std::array<icp_resource::ObjPrior, 1> priors{{
+    {.mean = predicted_pose, .information = information}
+}};
+icp.run_icp(
+    std::span{point_cloud},
+    {.max_loop_num = 10,
+     .accept_distance2 = 0.0036f,
+     .weighting = {.noise = icp_resource::NoiseModel{.sigma_range = 0.02f, .sigma_angle = 0.002f}},
+     .priors = std::span{priors}}
+);
+```
+- `information`は`mean`まわりの左摂動`T = exp(ξ) mean`の座標での情報行列で、成分順序は(並進, 回転)。ゼロ行列は事前なし
+- 物体自身の座標系の摂動で持っている情報行列は`prior_information_from_body`で変換する
+- 非ゼロの事前があるときは`weighting.noise`が必須(`A`を`1/σ²`重みのFisher情報にして、`Λ`と単位を揃えるため)
+- 事前を持つオブジェクトは対応点が1点でも更新され、1面しか見えないときのランク落ちで捨てられない。観測できない方向は`tikhonov`のようにゆっくり漂わず、`mean`に留まる
+- `posterior_information(oid)`で最終反復の`A + Jinvᵀ Λ Jinv + diag(tikhonov)`が得られる。楽観的な値であることに注意
+- `priors`は非所有ビューなので、`IcpParams`を保存して呼び出しをまたいで使わない
+
+定式化は`normal_known_icp.md`を参照。
 
 ## pre-commit, pre-pushについて
 ### pre-commit
