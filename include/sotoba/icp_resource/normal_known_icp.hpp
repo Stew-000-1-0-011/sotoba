@@ -55,12 +55,10 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 	};
 
 	/// 不変条件: leftJacobianInverse は θ = 2π に極を持つが、log() が回転角を
-	/// [0, π] に畳むので r からは到達しない。π 判定は非有限値を弾くためにある。
+	/// [0, π] に畳むので r からは到達しない。よって線形化は常に可能。
 	inline auto linearize_prior(const ObjPrior& prior, const Sophus::SE3f& pose) noexcept
-		-> std::optional<PriorLinearization> {
+		-> PriorLinearization {
 		const Sophus::SE3f::Tangent r = (pose * prior.mean.inverse()).log();
-		if (!r.allFinite() || !(r.template tail<3>().norm() <= std::numbers::pi_v<float>))
-			return std::nullopt;
 		return PriorLinearization{r, Sophus::SE3f::leftJacobianInverse(r)};
 	}
 
@@ -225,9 +223,6 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 		/// - 非ゼロの priors の information が非対称、または mean が非有限
 		///   → invalid_prior_information
 		/// - 非ゼロの priors があり weighting.noise が無い → prior_requires_noise_model
-		/// - 非ゼロの priors について事前残差 r = log(pose mean⁻¹) が線形化できない
-		///   → prior_linearization_failed (反復の途中で起きた場合も同じエラーを
-		///   返すが、そのときそれまでの反復の更新は残る)
 		///
 		/// 事前分布 (ObjPrior) があるオブジェクトは、各反復で
 		///   r = log(T_k mean⁻¹), H = A + Jinvᵀ Λ Jinv + diag(tikhonov),
@@ -282,12 +277,6 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 					return IcpError::invalid_prior_information;
 			}
 			if (any_prior && !weighting.noise) return IcpError::prior_requires_noise_model;
-			for (u8 iobj = 0; iobj < this->obj_num; ++iobj) {
-				const ObjPrior* const prior = prior_of(iobj);
-				if (prior != nullptr && !linearize_prior(*prior, this->obj_poses[iobj]))
-					return IcpError::prior_linearization_failed;
-			}
-
 			this->loop_count = 0;
 
 			const bool scheduled = (accept_distance2_begin > 0.f) && (max_loop_num > 1);
@@ -421,11 +410,10 @@ namespace sotoba::icp_resource::normal_known_icp_impl {
 					Sophus::SE3f::Tangent g = this->b[iobj];
 					if (prior != nullptr) {
 						const auto lin = linearize_prior(*prior, this->obj_poses[iobj]);
-						if (!lin) return IcpError::prior_linearization_failed;
-						const Matrix6f jt_lambda = lin->jinv.transpose() * prior->information;
-						h += jt_lambda * lin->jinv;
+						const Matrix6f jt_lambda = lin.jinv.transpose() * prior->information;
+						h += jt_lambda * lin.jinv;
 						// 不変条件: 事前項の勾配は Jinvᵀ Λ (r + Jinv x) なので、g には負号で入る
-						g -= jt_lambda * lin->r;
+						g -= jt_lambda * lin.r;
 					}
 					this->posterior_hessians[iobj] = h;
 
@@ -2057,14 +2045,16 @@ TEST_SUITE("normal_known_icp.hpp") {
 			CHECK(run(prior, fine_weighting()) == IcpError::invalid_prior_information);
 		}
 
-		SUBCASE("姿勢が NaN で事前残差が定義できない") {
-			icp.obj_pose(0) = Sophus::SE3f{
+		SUBCASE("姿勢が非有限なら事前ありでも事前なしと同じく対応点が付かない") {
+			const auto nan_pose = Sophus::SE3f{
 				Sophus::SO3f{},
 				Eigen::Vector3f::Constant(std::numeric_limits<float>::quiet_NaN())
 			};
-			CHECK(run(valid, fine_weighting()) == IcpError::prior_linearization_failed);
-			CHECK(icp.last_loop_count() == 0);
-			CHECK(icp.obj_status(0) == ObjStatus::not_run);
+			icp.obj_pose(0) = nan_pose;
+			CHECK(run(valid, fine_weighting()) == IcpError::none);
+			CHECK(icp.obj_status(0) == ObjStatus::too_few_correspondences);
+			CHECK(icp.correspondence_count(0) == 0);
+			CHECK_FALSE(icp.obj_pose(0).matrix().allFinite());
 			return;
 		}
 
