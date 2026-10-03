@@ -31,6 +31,14 @@ namespace sotoba::icp_resource::resource_impl {
 		invalid_accept_distance,
 		invalid_loop_num,
 		prior_size_mismatch,
+		/// 非ゼロの事前分布があるのに weighting.noise が無い。
+		/// Λ は物理単位を持つので、A も 1/σ² の重みで組まないと足せない。
+		prior_requires_noise_model,
+		/// 事前分布の mean と姿勢の相対回転が π を超えた、または非有限。
+		/// 左ヤコビアン逆の特異点 θ = 2π を避けるための線形化の適用範囲。
+		prior_residual_too_large,
+		/// 事前分布の information が非対称、または mean を含め非有限。
+		invalid_prior_information,
 	};
 
 	/// 点対面残差の分散を σ_r² cos² + r² σ_θ² (1 - cos²) と見積もる誤差モデル。
@@ -53,6 +61,18 @@ namespace sotoba::icp_resource::resource_impl {
 		Eigen::Matrix<float, 6, 6> information = Eigen::Matrix<float, 6, 6>::Zero();
 	};
 
+	/// 物体自身の座標系の摂動 T = mean exp(ξ_b) で持っている情報行列 Λ_b を、
+	/// ObjPrior::information が要求する左摂動 T = exp(ξ) mean の座標に直す。
+	/// ξ = Ad(mean) ξ_b なので Λ = Ad(mean⁻¹)ᵀ Λ_b Ad(mean⁻¹)。
+	inline auto prior_information_from_body(
+		const Sophus::SE3f& mean,
+		const Eigen::Matrix<float, 6, 6>& information_body
+	) noexcept -> Eigen::Matrix<float, 6, 6> {
+		const Eigen::Matrix<float, 6, 6> ad = mean.inverse().Adj();
+		const Eigen::Matrix<float, 6, 6> ret = ad.transpose() * information_body * ad;
+		return 0.5f * (ret + ret.transpose());
+	}
+
 	/// 全メンバに既定値があるが、max_loop_num と accept_distance2 は run_icp が
 	/// 検証するので、既定値のまま呼ぶとエラーが返る。
 	///
@@ -60,7 +80,8 @@ namespace sotoba::icp_resource::resource_impl {
 	/// そのまま加わる。重みの総和では割らない。
 	///
 	/// priors は非所有ビュー。IcpParams を保存して呼び出しをまたいで使わない。
-	/// 空、または obj_num と同じ長さ。
+	/// 空、または obj_num と同じ長さ。information がゼロ行列のオブジェクトは事前なしと
+	/// 同じに扱われる。非ゼロの事前が1つでもあるなら weighting.noise が必須。
 	struct IcpParams final {
 		u32 max_loop_num = 1;
 		float accept_distance2 = 0.f;
@@ -144,5 +165,6 @@ namespace sotoba::icp_resource {
 	using resource_impl::NoiseModel;
 	using resource_impl::ObjPrior;
 	using resource_impl::ObjStatus;
+	using resource_impl::prior_information_from_body;
 	using resource_impl::to_resource;
 } // namespace sotoba::icp_resource
