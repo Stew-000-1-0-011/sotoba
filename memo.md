@@ -1,3 +1,32 @@
+## 9/21
+
+`claude/docs-consistency`ブランチ関連の変更まとめ。
+
+origin/mainにマージ済みの29コミット (b77b52a..origin/main):
+- SYCL(icpx/oneAPI)依存を全削除、SVD版ICPを削除して点対面(normal_known)のみにした
+- run_icpをspan受け取り+IcpError返却のAPIに変更。点数超過はリサイズせずエラーを返す
+- 反復上限はmax_loop_numのまま、対応距離ゲートのcoarse-to-fineスケジュールを追加
+- 点ごとのノイズモデル重み付けとHuberのIRLS(反復重み付け最小二乗)を追加 (既定では無効)
+- 情報行列・残差ベクトルを取得できるようにした
+- BoxInner (内側から見る直方体。囲いに使える) を追加
+- min_correspondencesを3から6に修正
+- find_package(sotoba)に対応、空ライブラリを廃止、Ninja必須を撤廃
+- CIを追加、テストをPangolinから切り離した
+- 要求コンパイラはGCC 14+ / Clang 18+
+
+このブランチ自体では:
+- READMEのfind_packageに未対応という古い記述を修正
+- cmake/lib.cmakeのsrc/*.cpp向けOBJECT/STATIC/SHARED/MODULEライブラリ分岐とcmake/bin.cmakeを削除
+  (src/削除後に死んでいたため。sotoba_lib INTERFACEターゲットは変更なし)
+- run_icpのドキュメントコメントの誤り (accept_distance2_beginの条件) を訂正
+- normal_known_icp.mdにIcpWeightingによる重み付けを1行補足
+
+12/08todoのうち以下は達成済み:
+- find_packageされられるように色々準備 → 対応済み
+- tikhonovの扱いがsvd_icpとnormal_known_icpで異なるのを統一する → svd_icp自体を削除したので解消
+- PangolinをFetchContentしてないのはなんでだっけ → FetchContent済み
+- setup.bash内でclang-format-20などの存在チェック → check_before_push.bash側には入れたがsetup.bash単体では未実装
+
 ## 12/08 todoリスト
 - setup.bash内でclang-format-20などの存在チェック
 - bashスクリプトをディレクトリに纏める(そして各bash内のパスを修正)
