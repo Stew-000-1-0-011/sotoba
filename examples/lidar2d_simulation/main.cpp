@@ -13,7 +13,6 @@
 #include "sotoba/icp_resource/normal_known_icp.hpp"
 #include "sotoba/icp_resource/resource.hpp"
 
-#include "sotoba/math/quaternion.hpp"
 #include "sotoba/math/scalar_functions.hpp"
 #include "sotoba/math/se3.hpp"
 #include "sotoba/math/vec.hpp"
@@ -34,8 +33,6 @@ using namespace math;
 constexpr float pi = std::numbers::pi;
 using namespace std::chrono_literals;
 
-using Vec6 = Vec<6>;
-
 int main() {
 	using Variant = std::variant<surface::BoxInner, surface::BoxOuter, surface::Rectangle>;
 
@@ -44,10 +41,10 @@ int main() {
 	float scan_hz = 10.f;
 	float trans_speed = 4.0f;
 	float rot_speed = 1.5 * pi;
-	Vec6 tikhnov{};
+	Sophus::SE3f::Tangent tikhonov = Sophus::SE3f::Tangent::Zero();
 	std::cin >> loop_num >> accept_distance >> scan_hz;
 	std::cin >> trans_speed >> rot_speed;
-	std::cin >> tikhnov[0] >> tikhnov[1] >> tikhnov[2] >> tikhnov[3] >> tikhnov[4] >> tikhnov[5];
+	std::cin >> tikhonov[0] >> tikhonov[1] >> tikhonov[2] >> tikhonov[3] >> tikhonov[4] >> tikhonov[5];
 
 	// オブジェクト作成
 	// データの実体グループ1: 静的な環境（壁や床など）
@@ -107,12 +104,12 @@ int main() {
 	float t = 0.f;
 
 	// 各オブジェクトの真の姿勢
-	std::vector<SE3> true_poses(objects.size());
-	true_poses[0] = SE3::ide();
+	std::vector<Sophus::SE3f> true_poses(objects.size());
+	true_poses[0] = Sophus::SE3f{};
 	// true_poses[0] = SE3::trans({0.f, 20.f, 0.f});
 	// true_poses[1] = SE3::trans({5.f, 10.f, 0.f});
 	// 各オブジェクトの推定姿勢
-	std::vector<SE3> estimated_poses = true_poses;
+	std::vector<Sophus::SE3f> estimated_poses = true_poses;
 	// 点群データ
 	std::vector<Vec3> point_cloud(lidar.get_points_num());
 
@@ -153,11 +150,11 @@ int main() {
 			// const float yaw = 1.f;
 
 			const float dt = timer.lap().count();
-			const auto diff = SE3::trans(trans_speed * dt * p)
-				* SE3::rot(quaternion::ypr(rot_speed * dt * Vec3{roll, pitch, yaw}));
+			const auto diff = math::trans(trans_speed * dt * p)
+				* math::rot(math::ypr(rot_speed * dt * Vec3{roll, pitch, yaw}));
 
 			true_poses[current_controlled_object] = diff * true_poses[current_controlled_object];
-			std::println("pose_t 0: {}", Repr<SE3>::repr(true_poses[0]));
+			std::println("pose_t 0: {}", Repr<Sophus::SE3f>::repr(true_poses[0]));
 		}
 		std::println("process_input: {}", bench_timer.lap());
 
@@ -191,15 +188,19 @@ int main() {
 
 		// ICP
 		{
-			const auto icp_err =
-				icp.run_icp(std::span{point_cloud}, tikhnov, loop_num, pow2(accept_distance));
+			const auto icp_err = icp.run_icp(
+				std::span{point_cloud},
+				{.max_loop_num = loop_num,
+				 .accept_distance2 = pow2(accept_distance),
+				 .tikhonov = tikhonov}
+			);
 			if (icp_err != icp_resource::IcpError::none) {
-				std::println(stderr, "run_icp failed: too_many_points");
+				std::println(stderr, "run_icp failed: {}", std::to_underlying(icp_err));
 			}
 			for (u8 iobj = 0; iobj < objects.size(); ++iobj) {
 				estimated_poses[iobj] = icp.obj_poses[iobj];
 			}
-			std::println("pose_e 0: {}", Repr<SE3>::repr(estimated_poses[0]));
+			std::println("pose_e 0: {}", Repr<Sophus::SE3f>::repr(estimated_poses[0]));
 		}
 		std::println("icp: {}", bench_timer.lap());
 	};

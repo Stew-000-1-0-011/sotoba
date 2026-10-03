@@ -2,7 +2,6 @@
 
 #include <numbers>
 
-#include "sotoba/math/quaternion.hpp"
 #include "sotoba/math/scalar_functions.hpp"
 #include "sotoba/math/se3.hpp"
 #include "sotoba/math/vec.hpp"
@@ -11,11 +10,9 @@
 #include "sotoba/stdtypes.hpp"
 
 namespace sotoba::sim::rosetta_lidar_impl {
-	using math::SE3;
 	using math::UVec3;
 	using math::Vec3;
 	using math::Vec4;
-	namespace quaternion = math::quaternion;
 	using std::numbers::pi;
 
 	// 単位はdeg, m, Hz
@@ -104,8 +101,10 @@ namespace sotoba::sim::rosetta_lidar_impl {
 			const Vec3 noised_rpy =
 				{0.f, -el + this->angle_sigma * noise1, az + this->angle_sigma * noise2};
 
-			const UVec3 true_ray = SE3::rot(quaternion::rpy(true_rpy)).app_uv({1.f, 0.f, 0.f});
-			const UVec3 noised_ray = SE3::rot(quaternion::rpy(noised_rpy)).app_uv({1.f, 0.f, 0.f});
+			const UVec3 true_ray =
+				math::app_uv(math::rot(math::rpy(true_rpy)), UVec3{1.f, 0.f, 0.f});
+			const UVec3 noised_ray =
+				math::app_uv(math::rot(math::rpy(noised_rpy)), UVec3{1.f, 0.f, 0.f});
 			return {true_ray, noised_ray};
 		}
 
